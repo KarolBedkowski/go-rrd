@@ -36,8 +36,37 @@ func initDB(c *cli.Context) {
 		return
 	}
 
-	f, err := NewRRDFile(filename, int32(cols), int32(rows), int64(step),
-		funcID)
+	var archives []RRDArchive
+	archives = append(archives, RRDArchive{
+		Name: "arch1",
+		Step: 15,     // 15 sek
+		Rows: 4 * 60, // 1h
+	})
+	archives = append(archives, RRDArchive{
+		Name: "arch2",
+		Step: 60,
+		Rows: 60 * 24, // 24h
+	})
+	archives = append(archives, RRDArchive{
+		Name: "arch3",
+		Step: 300,         // 5m
+		Rows: 12 * 24 * 7, // 7d
+	})
+	archives = append(archives, RRDArchive{
+		Name: "arch4",
+		Step: 3600,    // 1h
+		Rows: 24 * 31, // 1m
+	})
+
+	colsDef := make([]RRDColumn, 0, cols)
+	for i := 0; i < cols; i++ {
+		colsDef = append(colsDef, RRDColumn{
+			Name:     fmt.Sprintf("col%02d", i),
+			Function: funcID,
+		})
+	}
+
+	f, err := NewRRDFile(filename, colsDef, archives)
 	if err != nil {
 		fmt.Println("Init db error: " + err.Error())
 		return
@@ -86,7 +115,7 @@ func putValue(c *cli.Context) {
 
 	fmt.Println(f.String())
 
-	err = f.Put(timestamp.Unix(), int32(col), value)
+	err = f.Put(timestamp.Unix(), col, float32(value))
 	if err != nil {
 		fmt.Println("Put error: " + err.Error())
 	}
@@ -109,7 +138,7 @@ func putValues(c *cli.Context) {
 	}
 	timestamp, ok := dateToTs(ts)
 	if !ok {
-		fmt.Println("Parse ts error")
+		fmt.Println("Parse ts error", timestamp)
 		return
 	}
 
@@ -135,7 +164,7 @@ func putValues(c *cli.Context) {
 		return
 	}
 
-	err = f.PutRow(timestamp.Unix(), values)
+	//	err = f.PutRow(timestamp.Unix(), values)
 	if err != nil {
 		fmt.Println("Put error: " + err.Error())
 	}
@@ -171,7 +200,7 @@ func getValue(c *cli.Context) {
 		fmt.Println("Open db error: " + err.Error())
 		return
 	}
-	if value, err := f.Get(timestamp.Unix(), int32(col)); err == nil {
+	if value, err := f.Get(timestamp.Unix(), col); err == nil {
 		fmt.Println(value.String())
 	} else {
 		fmt.Println("Missing value")
@@ -184,49 +213,51 @@ func getValue(c *cli.Context) {
 }
 
 func getRangeValues(c *cli.Context) {
-	filename, ok := getFilenameParam(c)
-	if !ok {
-		return
-	}
-	tsMin := int64(0)
-	tsMinStr := c.String("ts-min")
-	if c.IsSet("ts-min") && tsMinStr != "" {
-		if min, ok := dateToTs(tsMinStr); ok {
-			tsMin = min.Unix()
+	/*
+		filename, ok := getFilenameParam(c)
+		if !ok {
+			return
 		}
-	}
-	tsMax := int64(-1)
-	tsMaxStr := c.String("ts-max")
-	if c.IsSet("ts-max") && tsMaxStr != "" {
-		if max, ok := dateToTs(tsMaxStr); ok {
-			tsMax = max.Unix()
-		}
-	}
-
-	f, err := OpenRRD(filename, true)
-	if err != nil {
-		fmt.Println("Open db error: " + err.Error())
-		return
-	}
-	if rows, err := f.GetRange(tsMin, tsMax); err == nil {
-		for _, row := range rows {
-			fmt.Printf("%10d\t", row.TS)
-			for _, col := range row.Cols {
-				if col.Valid {
-					fmt.Printf("%f", col.Value)
-				}
-				fmt.Print("\t")
+		tsMin := int64(0)
+		tsMinStr := c.String("ts-min")
+		if c.IsSet("ts-min") && tsMinStr != "" {
+			if min, ok := dateToTs(tsMinStr); ok {
+				tsMin = min.Unix()
 			}
-			fmt.Print("\n")
 		}
-	} else {
-		fmt.Println("Error: " + err.Error())
-	}
-	err = f.Close()
-	if err != nil {
-		fmt.Println("Init db error: " + err.Error())
-		return
-	}
+		tsMax := int64(-1)
+		tsMaxStr := c.String("ts-max")
+		if c.IsSet("ts-max") && tsMaxStr != "" {
+			if max, ok := dateToTs(tsMaxStr); ok {
+				tsMax = max.Unix()
+			}
+		}
+
+		f, err := OpenRRD(filename, true)
+		if err != nil {
+			fmt.Println("Open db error: " + err.Error())
+			return
+		}
+		if rows, err := f.GetRange(tsMin, tsMax); err == nil {
+			for _, row := range rows {
+				fmt.Printf("%10d\t", row.TS)
+				for _, col := range row.Cols {
+					if col.Valid {
+						fmt.Printf("%f", col.Value)
+					}
+					fmt.Print("\t")
+				}
+				fmt.Print("\n")
+			}
+		} else {
+			fmt.Println("Error: " + err.Error())
+		}
+		err = f.Close()
+		if err != nil {
+			fmt.Println("Init db error: " + err.Error())
+			return
+		}
+	*/
 }
 
 func showInfo(c *cli.Context) {
@@ -279,7 +310,7 @@ func showLast(c *cli.Context) {
 		return
 	}
 
-	fmt.Println(f.Last())
+	//	fmt.Println(f.Last())
 
 	if err = f.Close(); err != nil {
 		fmt.Println("Init db error: " + err.Error())

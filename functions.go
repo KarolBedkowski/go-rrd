@@ -41,7 +41,7 @@ func (f Function) Apply(v1, v2 Value) Value {
 	}
 	switch f {
 	case F_AVERAGE:
-		v.Value = (v1.Value*float64(v1.Counter) + v.Value) / float64(v1.Counter+1)
+		v.Value = (v1.Value*float32(v1.Counter) + v.Value) / float32(v1.Counter+1)
 	case F_SUM:
 		v.Value = v1.Value + v2.Value
 	case F_MINIMUM:
