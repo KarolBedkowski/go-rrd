@@ -28,14 +28,6 @@ rows[
 */
 
 const (
-	F_AVERAGE = iota
-	F_MAXIMUM
-	F_MINIMUM
-	F_SUM
-	F_COUNT
-)
-
-const (
 	fileVersion = 1
 )
 
@@ -47,28 +39,11 @@ type Value struct {
 	Counter int64
 }
 
+var valueSize = binary.Size(float64(0)) + binary.Size(int64(0)) + binary.Size(int8(0))
+
 func (v *Value) String() string {
 	return fmt.Sprintf("Value[td=%d, valid=%v, value=%v, counter=%d]",
 		v.TS, v.Valid, v.Value, v.Counter)
-}
-
-func (v *Value) size() int {
-	return binary.Size(v.Counter) + binary.Size(v.Value) + binary.Size(int8(0))
-}
-
-func (v *Value) Read(r io.Reader) (err error) {
-	if err = binary.Read(r, binary.LittleEndian, &v.Value); err != nil {
-		return
-	}
-	if err = binary.Read(r, binary.LittleEndian, &v.Counter); err != nil {
-		return
-	}
-	var valid int8
-	if err = binary.Read(r, binary.LittleEndian, &valid); err != nil {
-		return
-	}
-	v.Valid = valid == 1
-	return
 }
 
 func (v *Value) Write(r io.Writer) (err error) {
@@ -88,27 +63,20 @@ func (v *Value) Write(r io.Writer) (err error) {
 	return
 }
 
-func (v *Value) ApplyFunction(prev Value, funcID int) {
-	if !prev.Valid {
+func loadValue(r io.Reader) (v Value, err error) {
+	v = Value{}
+	if err = binary.Read(r, binary.LittleEndian, &v.Value); err != nil {
 		return
 	}
-	switch funcID {
-	case F_AVERAGE:
-		v.Value = (prev.Value*float64(prev.Counter) + v.Value) / float64(prev.Counter+1)
-	case F_SUM:
-		v.Value += prev.Value
-	case F_MINIMUM:
-		if v.Value > prev.Value {
-			v.Value = prev.Value
-		}
-	case F_MAXIMUM:
-		if v.Value < prev.Value {
-			v.Value = prev.Value
-		}
-	case F_COUNT:
-		v.Value = prev.Value + 1
+	if err = binary.Read(r, binary.LittleEndian, &v.Counter); err != nil {
+		return
 	}
-	v.Counter = prev.Counter + 1
+	var valid int8
+	if err = binary.Read(r, binary.LittleEndian, &valid); err != nil {
+		return
+	}
+	v.Valid = valid == 1
+	return
 }
 
 type rddHeader struct {
@@ -116,63 +84,51 @@ type rddHeader struct {
 	Rows     int32
 	Cols     int32
 	Step     int64
-	Function int
+	Function Function
 }
+
+var rddHeaderSize = binary.Size(int64(0)) + binary.Size(int32(0)) + binary.Size(int32(0)) +
+	binary.Size(int64(0)) + binary.Size(int8(0))
 
 func (h *rddHeader) String() string {
 	return fmt.Sprintf("rddHeader[Rows: %d, Cols: %d, Step: %d]", h.Rows, h.Cols, h.Step)
 }
 
-func (h *rddHeader) size() int {
-	return binary.Size(h.Version) + binary.Size(h.Rows) + binary.Size(h.Cols) +
-		binary.Size(h.Step) + binary.Size(int8(0))
-}
-
 func (h *rddHeader) read(r io.Reader) (err error) {
-	err = binary.Read(r, binary.LittleEndian, &h.Version)
-	if err != nil {
+	if err = binary.Read(r, binary.LittleEndian, &h.Version); err != nil {
 		return
 	}
-	err = binary.Read(r, binary.LittleEndian, &h.Rows)
-	if err != nil {
+	if err = binary.Read(r, binary.LittleEndian, &h.Rows); err != nil {
 		return
 	}
-	err = binary.Read(r, binary.LittleEndian, &h.Cols)
-	if err != nil {
+	if err = binary.Read(r, binary.LittleEndian, &h.Cols); err != nil {
 		return
 	}
-	err = binary.Read(r, binary.LittleEndian, &h.Step)
-	if err != nil {
+	if err = binary.Read(r, binary.LittleEndian, &h.Step); err != nil {
 		return
 	}
 	var f int8
-	err = binary.Read(r, binary.LittleEndian, &f)
-	if err != nil {
+	if err = binary.Read(r, binary.LittleEndian, &f); err != nil {
 		return
 	}
-	h.Function = int(f)
+	h.Function = Function(f)
 	return nil
 }
 
 func (h *rddHeader) write(w io.Writer) (err error) {
-	err = binary.Write(w, binary.LittleEndian, h.Version)
-	if err != nil {
+	if err = binary.Write(w, binary.LittleEndian, h.Version); err != nil {
 		return
 	}
-	err = binary.Write(w, binary.LittleEndian, h.Rows)
-	if err != nil {
+	if err = binary.Write(w, binary.LittleEndian, h.Rows); err != nil {
 		return
 	}
-	err = binary.Write(w, binary.LittleEndian, h.Cols)
-	if err != nil {
+	if err = binary.Write(w, binary.LittleEndian, h.Cols); err != nil {
 		return
 	}
-	err = binary.Write(w, binary.LittleEndian, h.Step)
-	if err != nil {
+	if err = binary.Write(w, binary.LittleEndian, h.Step); err != nil {
 		return
 	}
-	err = binary.Write(w, binary.LittleEndian, int8(h.Function))
-	if err != nil {
+	if err = binary.Write(w, binary.LittleEndian, int8(h.Function)); err != nil {
 		return
 	}
 	return nil
@@ -180,12 +136,11 @@ func (h *rddHeader) write(w io.Writer) (err error) {
 
 // RRDFile is round-robin database file
 type RRDFile struct {
-	filename   string
-	f          *os.File
-	header     rddHeader
-	headerSize int
-	rowSize    int
-	readonly   bool
+	filename string
+	f        *os.File
+	header   rddHeader
+	rowSize  int
+	readonly bool
 }
 
 // OpenRRD open existing rrd file
@@ -207,14 +162,13 @@ func OpenRRD(filename string, readonly bool) (*RRDFile, error) {
 
 	f.Seek(0, 0)
 	err = r.header.read(f)
-	r.rowSize = rowSize(r.header.Cols)
-	r.headerSize = r.header.size()
+	r.rowSize = calcRowSize(r.header.Cols)
 
 	return r, err
 }
 
 // NewRRDFile create new, empty RRD file
-func NewRRDFile(filename string, cols, rows int32, step int64, function int) (*RRDFile, error) {
+func NewRRDFile(filename string, cols, rows int32, step int64, function Function) (*RRDFile, error) {
 	f, err := os.Create(filename)
 	if err != nil {
 		return nil, err
@@ -223,22 +177,21 @@ func NewRRDFile(filename string, cols, rows int32, step int64, function int) (*R
 	r := &RRDFile{
 		f:        f,
 		filename: filename,
-		rowSize:  rowSize(cols),
+		rowSize:  calcRowSize(cols),
 	}
 
-	r.headerSize = r.header.size()
 	r.header.Version = fileVersion
 	r.header.Cols = cols
 	r.header.Rows = rows
 	r.header.Step = step
-	r.header.Function = function
+	r.header.Function = Function(function)
 
 	f.Seek(0, 0)
 	if err := r.header.write(f); err != nil {
 		fmt.Println("NewRRDFile write error: " + err.Error())
 	}
 
-	dstSize := rows * int32(rowSize(cols))
+	dstSize := rows * int32(calcRowSize(cols))
 	buff := make([]byte, dstSize, dstSize)
 	f.Write(buff)
 
@@ -249,7 +202,7 @@ func NewRRDFile(filename string, cols, rows int32, step int64, function int) (*R
 
 func (r *RRDFile) String() string {
 	return fmt.Sprintf("RRDFile[filename=%s, f=%v, header=%#v, headerSize=%d, rowSize=%d]",
-		r.filename, r.f, r.header, r.headerSize, r.rowSize)
+		r.filename, r.f, r.header, rddHeaderSize, r.rowSize)
 }
 
 // Close RRD file
@@ -259,7 +212,7 @@ func (r *RRDFile) Close() error {
 
 // Put value into database
 func (r *RRDFile) Put(ts int64, col int32, value float64) error {
-	v := &Value{
+	v := Value{
 		TS:    ts,
 		Valid: true,
 		Value: value,
@@ -268,7 +221,7 @@ func (r *RRDFile) Put(ts int64, col int32, value float64) error {
 }
 
 // PutValue insert value into database
-func (r *RRDFile) PutValue(v *Value, col int32) error {
+func (r *RRDFile) PutValue(v Value, col int32) error {
 	if r.readonly {
 		return errors.New("RRD file open as read-only")
 	}
@@ -289,10 +242,13 @@ func (r *RRDFile) PutValue(v *Value, col int32) error {
 		return err
 	}
 
-	prev := Value{}
-	prev.Read(r.f)
+	prev, _ := loadValue(r.f)
 
-	v.ApplyFunction(prev, r.header.Function)
+	fmt.Printf("Prev: %s\n", prev.String())
+
+	v = r.header.Function.Apply(prev, v)
+
+	fmt.Printf("New: %s\n", v.String())
 
 	if _, err := r.f.Seek(valueOffset, 0); err != nil {
 		return err
@@ -333,8 +289,7 @@ func (r *RRDFile) PutRow(ts int64, values []float64) error {
 	}
 	var prevs []Value
 	for i := 0; i < len(values); i++ {
-		v := Value{}
-		v.Read(r.f)
+		v, _ := loadValue(r.f)
 		prevs = append(prevs, v)
 	}
 
@@ -346,7 +301,7 @@ func (r *RRDFile) PutRow(ts int64, values []float64) error {
 			Valid: true,
 			Value: val,
 		}
-		v.ApplyFunction(prevs[idx], r.header.Function)
+		v = r.header.Function.Apply(prevs[idx], v)
 		if err := v.Write(r.f); err != nil {
 			return err
 		}
@@ -358,14 +313,13 @@ func (r *RRDFile) PutRow(ts int64, values []float64) error {
 // Get value from database
 func (r *RRDFile) Get(ts int64, col int32) (*Value, error) {
 	tsOffset, valueOffset := r.calcOffset(ts, col)
-	v := &Value{}
-
 	// Read real ts
 	if _, err := r.f.Seek(tsOffset, 0); err != nil {
 		return nil, err
 	}
 
-	if err := binary.Read(r.f, binary.LittleEndian, &v.TS); err != nil {
+	var rowTS int64
+	if err := binary.Read(r.f, binary.LittleEndian, &rowTS); err != nil {
 		return nil, err
 	}
 
@@ -373,8 +327,9 @@ func (r *RRDFile) Get(ts int64, col int32) (*Value, error) {
 	if _, err := r.f.Seek(valueOffset, 0); err != nil {
 		return nil, err
 	}
-	err := v.Read(r.f)
-	return v, err
+	v, err := loadValue(r.f)
+	v.TS = rowTS
+	return &v, err
 }
 
 func (r *RRDFile) checkAndCleanRow(ts int64, tsOffset int64) error {
@@ -419,10 +374,10 @@ func (r *RRDFile) GetRange(minTS, maxTS int64) (Rows, error) {
 
 	minTS = r.calcTS(minTS)
 
-	if _, err := r.f.Seek(int64(r.headerSize), 0); err != nil {
+	if _, err := r.f.Seek(int64(rddHeaderSize), 0); err != nil {
 		return nil, err
 	}
-	offset := int64(r.headerSize)
+	offset := int64(rddHeaderSize)
 	for y := int32(0); y < r.header.Rows; y++ {
 		if _, err := r.f.Seek(offset, 0); err != nil {
 			return nil, err
@@ -435,8 +390,7 @@ func (r *RRDFile) GetRange(minTS, maxTS int64) (Rows, error) {
 		if ts > 0 && ts >= minTS && (ts <= maxTS || maxTS < 0) {
 			row := Row{TS: ts, Cols: make([]Value, 0, r.header.Cols)}
 			for c := int32(0); c < r.header.Cols; c++ {
-				v := Value{}
-				v.Read(r.f)
+				v, _ := loadValue(r.f)
 				row.Cols = append(row.Cols, v)
 			}
 			res = append(res, row)
@@ -448,8 +402,35 @@ func (r *RRDFile) GetRange(minTS, maxTS int64) (Rows, error) {
 	return res, nil
 }
 
+func (r *RRDFile) Last() int64 {
+	if _, err := r.f.Seek(int64(rddHeaderSize), 0); err != nil {
+		return 0
+	}
+	var last int64
+	offset := int64(rddHeaderSize)
+	for y := int32(0); y < r.header.Rows; y++ {
+		if _, err := r.f.Seek(offset, 0); err != nil {
+			return last
+		}
+		var ts int64
+		if err := binary.Read(r.f, binary.LittleEndian, &ts); err != nil {
+			return last
+		}
+		//fmt.Printf("ts=%d, minTS=%d,maxTS=%d\n", ts, minTS, maxTS)
+		if ts > 0 {
+			if ts > last {
+				last = ts
+			} else {
+				break
+			}
+		}
+		offset += int64(r.rowSize)
+	}
+	return last
+}
+
 func (r *RRDFile) calcOffset(ts int64, col int32) (tsOffset, valueOffset int64) {
-	tsOffset = int64(r.headerSize) + int64(r.rowSize)*((ts/r.header.Step)%int64(r.header.Rows))
+	tsOffset = int64(rddHeaderSize) + int64(r.rowSize)*((ts/r.header.Step)%int64(r.header.Rows))
 	valueOffset = tsOffset + int64(binary.Size(ts)) // ts
 	valueOffset += int64(col) * int64(binary.Size(float64(0)))
 	return
@@ -459,9 +440,8 @@ func (r *RRDFile) calcTS(ts int64) int64 {
 	return int64(ts/r.header.Step) * r.header.Step
 }
 
-func rowSize(cols int32) int {
-	v := Value{}
-	return binary.Size(int64(0)) + int(cols)*v.size()
+func calcRowSize(cols int32) int {
+	return binary.Size(int64(0)) + int(cols)*valueSize
 }
 
 // RRDFileInfo holds informations about rrd file
@@ -474,7 +454,7 @@ type RRDFileInfo struct {
 	MinTS    int64
 	MaxTS    int64
 	Values   int64
-	Function int
+	Function Function
 }
 
 func (r *RRDFile) Info() (*RRDFileInfo, error) {
@@ -487,11 +467,10 @@ func (r *RRDFile) Info() (*RRDFileInfo, error) {
 	}
 
 	// Count rows & Values
-	offset := int64(r.headerSize)
+	offset := int64(rddHeaderSize)
 	if _, err := r.f.Seek(offset, 0); err != nil {
 		return nil, err
 	}
-	var value Value
 	for y := int32(0); y < r.header.Rows; y++ {
 		offset += int64(r.rowSize)
 		var ts int64
@@ -507,7 +486,7 @@ func (r *RRDFile) Info() (*RRDFileInfo, error) {
 				res.MaxTS = ts
 			}
 			for x := int32(0); x < r.header.Cols; x++ {
-				value.Read(r.f)
+				value, _ := loadValue(r.f)
 				if value.Valid {
 					res.Values++
 				}

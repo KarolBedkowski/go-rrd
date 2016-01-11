@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/codegangsta/cli"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -31,19 +30,8 @@ func initDB(c *cli.Context) {
 	}
 
 	function := c.String("function")
-	var funcID int
-	switch strings.ToLower(function) {
-	case "", "average", "avg":
-		funcID = F_AVERAGE
-	case "minimum", "min":
-		funcID = F_MINIMUM
-	case "maximum", "max":
-		funcID = F_MAXIMUM
-	case "sum":
-		funcID = F_SUM
-	case "count":
-		funcID = F_COUNT
-	default:
+	funcID, ok := ParseFunctionName(function)
+	if !ok {
 		fmt.Println("Unknown function")
 		return
 	}
@@ -261,18 +249,8 @@ func showInfo(c *cli.Context) {
 		fmt.Printf("Used rows: %d (%0.1f%%)\n", info.UsedRows,
 			100.0*float32(info.UsedRows)/float32(info.Rows))
 		fmt.Printf("TS range: %d - %d\n", info.MinTS, info.MaxTS)
-		switch info.Function {
-		case F_AVERAGE:
-			fmt.Println("Function: average")
-		case F_SUM:
-			fmt.Println("Function: sum")
-		case F_MINIMUM:
-			fmt.Println("Function: minimum")
-		case F_MAXIMUM:
-			fmt.Println("Function: maximum")
-		case F_COUNT:
-			fmt.Println("Function: count")
-		}
+		fmt.Printf("Function: %s\n", info.Function.String())
+
 		valuesInRows := float32(0)
 		if info.UsedRows > 0 {
 			valuesInRows = float32(info.Values) / float32(info.UsedRows*info.Cols)
@@ -287,6 +265,27 @@ func showInfo(c *cli.Context) {
 		fmt.Println("Init db error: " + err.Error())
 		return
 	}
+}
+
+func showLast(c *cli.Context) {
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+
+	f, err := OpenRRD(filename, true)
+	if err != nil {
+		fmt.Println("Open db error: " + err.Error())
+		return
+	}
+
+	fmt.Println(f.Last())
+
+	if err = f.Close(); err != nil {
+		fmt.Println("Init db error: " + err.Error())
+		return
+	}
+
 }
 
 func dateToTs(ts string) (time.Time, bool) {

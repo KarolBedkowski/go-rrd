@@ -121,6 +121,11 @@ func main() {
 			Usage:  "show informations about rddfile",
 			Action: showInfo,
 		},
+		{
+			Name:   "last",
+			Usage:  "get last time stamp from database",
+			Action: showLast,
+		},
 	}
 	app.Run(os.Args)
 }
