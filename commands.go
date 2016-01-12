@@ -253,6 +253,10 @@ func dateToTs(ts string) (int64, bool) {
 		return res, true
 	}
 
+	if d, err := time.ParseDuration(ts); err == nil {
+		return time.Now().Add(d).Unix(), true
+	}
+
 	if t, err := time.Parse(time.RFC822, ts); err == nil {
 		return t.Unix(), true
 	}

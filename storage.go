@@ -423,7 +423,7 @@ func (r *RRDFile) getRange(a *RRDArchive, min, max int64, cols []int) (Rows, err
 		if err := binary.Read(r.f, binary.LittleEndian, &ts); err != nil {
 			return nil, err
 		}
-		if ts > -1 && ts >= max && ts <= max {
+		if ts > -1 && ts >= min && ts <= max {
 			values, err := r.loadValues(offset, ts, cols)
 			if err != nil {
 				return nil, err
