@@ -1,2 +1,2 @@
 build:
-	go build -o gorrd
+	go build -v -o gorrd

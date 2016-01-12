@@ -43,11 +43,12 @@ func initDB(c *cli.Context) {
 		fmt.Println("Init db error: " + err.Error())
 		return
 	}
-	fmt.Println(f.String())
+
+	printRRDInfo(f)
 
 	err = f.Close()
 	if err != nil {
-		fmt.Println("Init db error: " + err.Error())
+		fmt.Println("Closing db error: " + err.Error())
 		return
 	}
 }
@@ -140,7 +141,7 @@ func getValue(c *cli.Context) {
 	}
 	err = f.Close()
 	if err != nil {
-		fmt.Println("Init db error: " + err.Error())
+		fmt.Println("Closing db error: " + err.Error())
 		return
 	}
 }
@@ -197,7 +198,7 @@ func getRangeValues(c *cli.Context) {
 	}
 	err = f.Close()
 	if err != nil {
-		fmt.Println("Init db error: " + err.Error())
+		fmt.Println("Closing db error: " + err.Error())
 		return
 	}
 }
@@ -214,35 +215,11 @@ func showInfo(c *cli.Context) {
 		return
 	}
 
-	if info, err := f.Info(); err == nil {
-		fmt.Printf("Filename: %s\n", info.Filename)
-		fmt.Printf("Columns: %d\n", info.ColumnsCount)
-		for _, col := range info.Columns {
-			fmt.Printf(" - %s - %s\n", col.Name, col.Function.String())
-		}
-		fmt.Printf("Archives: %d\n", info.ArchivesCount)
-		for _, a := range info.Archives {
-			fmt.Printf(" - Name: %s\n", a.Name)
-			fmt.Printf("   Rows: %d\n", a.Rows)
-			fmt.Printf("   Step: %d\n", a.Step)
-			fmt.Printf("   TS range: %d - %d\n", a.MinTS, a.MaxTS)
-			fmt.Printf("   Used rows: %d (%0.1f%%)\n", a.UsedRows,
-				100.0*float32(a.UsedRows)/float32(a.Rows))
-			valuesInRows := float32(0)
-			if a.UsedRows > 0 {
-				valuesInRows = float32(a.Values) / float32(a.UsedRows*info.ColumnsCount)
-			}
-			valuesInDb := float32(a.Values) / float32(a.Rows*info.ColumnsCount)
-			fmt.Printf("   Inserted values: %d (%0.1f%% in rows; %0.1f%% in database)\n",
-				a.Values, 100.0*valuesInRows, 100.0*valuesInDb)
-		}
-	} else {
-		fmt.Println("Error: " + err.Error())
-	}
+	printRRDInfo(f)
 
 	err = f.Close()
 	if err != nil {
-		fmt.Println("Init db error: " + err.Error())
+		fmt.Println("Closing db error: " + err.Error())
 		return
 	}
 }
@@ -259,11 +236,10 @@ func showLast(c *cli.Context) {
 		return
 	}
 
-	fmt.Println(f.String())
 	fmt.Println(f.Last())
 
 	if err = f.Close(); err != nil {
-		fmt.Println("Init db error: " + err.Error())
+		fmt.Println("Closing db error: " + err.Error())
 		return
 	}
 
@@ -372,4 +348,33 @@ func parseColumnsDef(inp string) (columns []RRDColumn, err error) {
 		columns = append(columns, c)
 	}
 	return
+}
+
+func printRRDInfo(f *RRDFile) {
+	if info, err := f.Info(); err == nil {
+		fmt.Printf("Filename: %s\n", info.Filename)
+		fmt.Printf("Columns: %d\n", info.ColumnsCount)
+		for _, col := range info.Columns {
+			fmt.Printf(" - %s - %s\n", col.Name, col.Function.String())
+		}
+		fmt.Printf("Archives: %d\n", info.ArchivesCount)
+		for _, a := range info.Archives {
+			fmt.Printf(" - Name: %s\n", a.Name)
+			fmt.Printf("   Rows: %d\n", a.Rows)
+			fmt.Printf("   Step: %d\n", a.Step)
+			fmt.Printf("   TS range: %d - %d\n", a.MinTS, a.MaxTS)
+			fmt.Printf("   Used rows: %d (%0.1f%%)\n", a.UsedRows,
+				100.0*float32(a.UsedRows)/float32(a.Rows))
+			valuesInRows := float32(0)
+			if a.UsedRows > 0 {
+				valuesInRows = float32(a.Values) / float32(a.UsedRows*info.ColumnsCount)
+			}
+			valuesInDb := float32(a.Values) / float32(a.Rows*info.ColumnsCount)
+			fmt.Printf("   Inserted values: %d (%0.1f%% in rows; %0.1f%% in database)\n",
+				a.Values, 100.0*valuesInRows, 100.0*valuesInDb)
+		}
+	} else {
+		fmt.Println("Error: " + err.Error())
+	}
+
 }

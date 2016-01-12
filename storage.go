@@ -23,54 +23,6 @@ const (
 	fileMagic   = int64(1038472294759683202)
 )
 
-// Value stricture holds single value in rrd
-type Value struct {
-	TS      int64 // not stored
-	Valid   bool  // int32
-	Value   float32
-	Counter int64
-}
-
-var valueSize = 4 + binary.Size(float32(0)) + 8
-
-func (v *Value) String() string {
-	return fmt.Sprintf("Value[td=%d, valid=%v, value=%v, counter=%d]",
-		v.TS, v.Valid, v.Value, v.Counter)
-}
-
-func (v *Value) Write(r io.Writer) (err error) {
-	if err = binary.Write(r, binary.LittleEndian, v.Value); err != nil {
-		return
-	}
-	if err = binary.Write(r, binary.LittleEndian, v.Counter); err != nil {
-		return
-	}
-	valid := int32(0)
-	if v.Valid {
-		valid = 1
-	}
-	if err = binary.Write(r, binary.LittleEndian, valid); err != nil {
-		return
-	}
-	return
-}
-
-func loadValue(r io.Reader) (v Value, err error) {
-	v = Value{}
-	if err = binary.Read(r, binary.LittleEndian, &v.Value); err != nil {
-		return
-	}
-	if err = binary.Read(r, binary.LittleEndian, &v.Counter); err != nil {
-		return
-	}
-	var valid int32
-	if err = binary.Read(r, binary.LittleEndian, &valid); err != nil {
-		return
-	}
-	v.Valid = valid == 1
-	return
-}
-
 type (
 	// rrdHeader is file header
 	rrdHeader struct {
@@ -209,7 +161,7 @@ func NewRRDFile(filename string, cols []RRDColumn, archives []RRDArchive) (*RRDF
 			}
 		}
 	}
-	fmt.Printf("%+v", r)
+	//fmt.Printf("%+v", r)
 	return r, nil
 }
 
@@ -241,12 +193,28 @@ func (r *RRDFile) PutValue(v Value, col int) error {
 	for _, a := range r.archives {
 		aTS := a.calcTS(v.TS)
 		rowOffset, valOffset := a.calcOffset(aTS, col, r.rowSize)
-		fmt.Printf("PutValue info archive %s: %d, %d\n", a.Name, rowOffset, valOffset)
+		//fmt.Printf("PutValue info archive %s: %d, %d\n", a.Name, rowOffset, valOffset)
 		if err := r.writeValue(aTS, v, rowOffset, valOffset, function); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (r *RRDFile) loadValue() (v Value, err error) {
+	v = Value{}
+	if err = binary.Read(r.f, binary.LittleEndian, &v.Value); err != nil {
+		return
+	}
+	if err = binary.Read(r.f, binary.LittleEndian, &v.Counter); err != nil {
+		return
+	}
+	var valid int32
+	if err = binary.Read(r.f, binary.LittleEndian, &valid); err != nil {
+		return
+	}
+	v.Valid = valid == 1
+	return
 }
 
 // PutValue insert value into database
@@ -260,7 +228,7 @@ func (r *RRDFile) writeValue(ts int64, v Value, rowOffset, valOffset int64, func
 	if _, err := r.f.Seek(valOffset, 0); err != nil {
 		return err
 	}
-	prev, _ := loadValue(r.f)
+	prev, _ := r.loadValue()
 	v = function.Apply(prev, v)
 	if _, err := r.f.Seek(valOffset, 0); err != nil {
 		return err
@@ -284,7 +252,7 @@ func (r *RRDFile) PutRow(ts int64, values []float32) error {
 	for _, a := range r.archives {
 		aTS := a.calcTS(ts)
 		rowOffset, _ := a.calcOffset(aTS, 0, r.rowSize)
-		fmt.Printf("PutRow info archive %s: %d\n", a.Name, rowOffset)
+		//fmt.Printf("PutRow info archive %s: %d\n", a.Name, rowOffset)
 		if err := r.writeRow(aTS, values, rowOffset); err != nil {
 			return err
 		}
@@ -300,7 +268,7 @@ func (r *RRDFile) writeRow(ts int64, values []float32, rowOffset int64) error {
 	// load old values
 	var prevs []Value
 	for i := 0; i < len(values); i++ {
-		v, _ := loadValue(r.f)
+		v, _ := r.loadValue()
 		prevs = append(prevs, v)
 	}
 
@@ -346,7 +314,7 @@ func (r *RRDFile) Get(ts int64, cols []int) ([]Value, error) {
 			// value not found in this archive, search in next
 			continue
 		}
-		fmt.Printf("Getting from %s - %d, %v\n", a.Name, rowOffset, cols)
+		//fmt.Printf("Getting from %s - %d, %v\n", a.Name, rowOffset, cols)
 		return r.loadValues(rowOffset, rowTS, cols)
 	}
 	return nil, nil
@@ -358,7 +326,7 @@ func (r *RRDFile) loadValues(rowOffset int64, rowTS int64, cols []int) ([]Value,
 		if _, err := r.f.Seek(rowOffset+8+int64(col*valueSize), 0); err != nil {
 			return nil, err
 		}
-		v, err := loadValue(r.f)
+		v, err := r.loadValue()
 		if err == nil {
 			v.TS = rowTS
 		} else {
@@ -436,7 +404,7 @@ func (r *RRDFile) GetRange(minTS, maxTS int64, cols []int) (Rows, error) {
 			break
 		}
 	}
-	fmt.Printf("Using archive %s\n", archive)
+	//fmt.Printf("Using archive %s\n", archive)
 	rows, err := r.getRange(archive, minTS, maxTS, cols)
 	if err == nil {
 		sort.Sort(rows)
@@ -455,7 +423,6 @@ func (r *RRDFile) getRange(a *RRDArchive, min, max int64, cols []int) (Rows, err
 		if err := binary.Read(r.f, binary.LittleEndian, &ts); err != nil {
 			return nil, err
 		}
-		//fmt.Printf("ts=%d, minTS=%d,maxTS=%d\n", ts, minTS, maxTS)
 		if ts > -1 && ts >= max && ts <= max {
 			values, err := r.loadValues(offset, ts, cols)
 			if err != nil {
@@ -484,7 +451,6 @@ func (r *RRDFile) Last() int64 {
 		if err := binary.Read(r.f, binary.LittleEndian, &ts); err != nil {
 			return last
 		}
-		//fmt.Printf("ts=%d, minTS=%d,maxTS=%d\n", ts, minTS, maxTS)
 		if ts >= 0 {
 			if ts > last {
 				last = ts
@@ -694,7 +660,7 @@ func (a *archIterator) Value(column int) (*Value, error) {
 	if _, err := a.file.f.Seek(valOffset, 0); err != nil {
 		return nil, err
 	}
-	v, err := loadValue(a.file.f)
+	v, err := a.file.loadValue()
 	if err != nil {
 		return nil, err
 	}
@@ -713,7 +679,7 @@ func (a *archIterator) Values() ([]Value, error) {
 	}
 	var values []Value
 	for col := 0; col < len(a.file.columns); col++ {
-		v, err := loadValue(a.file.f)
+		v, err := a.file.loadValue()
 		if err != nil {
 			return nil, err
 		}
