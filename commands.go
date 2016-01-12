@@ -3,9 +3,11 @@ package main
 import (
 	//	"flag"
 	"fmt"
-	"github.com/codegangsta/cli"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/codegangsta/cli"
 )
 
 func initDB(c *cli.Context) {
@@ -13,60 +15,30 @@ func initDB(c *cli.Context) {
 	if !ok {
 		return
 	}
-	rows := c.Int("rows")
-	if !c.IsSet("rows") || rows < 1 {
-		fmt.Println("Missing number of rows (-rows)")
-		return
-	}
-	cols := c.Int("cols")
-	if !c.IsSet("cols") || cols < 1 {
-		fmt.Println("Missing number of cols (-cols)")
-		return
-	}
-	step := c.Int("step")
-	if !c.IsSet("step") || step < 1 {
-		fmt.Println("Missing step (-step)")
+	cols := c.String("columns")
+	if !c.IsSet("columns") || cols == "" {
+		fmt.Println("Missing number of columns (--columns)")
 		return
 	}
 
-	function := c.String("function")
-	funcID, ok := ParseFunctionName(function)
-	if !ok {
-		fmt.Println("Unknown function")
+	columns, err := parseColumnsDef(cols)
+	if err != nil {
+		fmt.Println("Columns definition error: " + err.Error())
 		return
 	}
 
-	var archives []RRDArchive
-	archives = append(archives, RRDArchive{
-		Name: "arch1",
-		Step: 15,     // 15 sek
-		Rows: 4 * 60, // 1h
-	})
-	archives = append(archives, RRDArchive{
-		Name: "arch2",
-		Step: 60,
-		Rows: 60 * 24, // 24h
-	})
-	archives = append(archives, RRDArchive{
-		Name: "arch3",
-		Step: 300,         // 5m
-		Rows: 12 * 24 * 7, // 7d
-	})
-	archives = append(archives, RRDArchive{
-		Name: "arch4",
-		Step: 3600,    // 1h
-		Rows: 24 * 31, // 1m
-	})
-
-	colsDef := make([]RRDColumn, 0, cols)
-	for i := 0; i < cols; i++ {
-		colsDef = append(colsDef, RRDColumn{
-			Name:     fmt.Sprintf("col%02d", i),
-			Function: funcID,
-		})
+	archivesDef := c.String("archives")
+	if !c.IsSet("archives") || archivesDef == "" {
+		fmt.Println("Missing archives definition (--archives)")
+		return
+	}
+	archives, err := parseArchiveDef(archivesDef)
+	if err != nil {
+		fmt.Println("Archives definition error: " + err.Error())
+		return
 	}
 
-	f, err := NewRRDFile(filename, colsDef, archives)
+	f, err := NewRRDFile(filename, columns, archives)
 	if err != nil {
 		fmt.Println("Init db error: " + err.Error())
 		return
@@ -76,52 +48,6 @@ func initDB(c *cli.Context) {
 	err = f.Close()
 	if err != nil {
 		fmt.Println("Init db error: " + err.Error())
-		return
-	}
-}
-
-func putValue(c *cli.Context) {
-	filename, ok := getFilenameParam(c)
-	if !ok {
-		return
-	}
-	ts := c.String("ts")
-	if !c.IsSet("ts") || ts == "" {
-		fmt.Println("Missing time stamp (--ts)")
-		return
-	}
-	col := c.Int("col")
-	if !c.IsSet("col") || col < 0 {
-		fmt.Println("Missing column (--col)")
-		return
-	}
-	if !c.IsSet("value") {
-		fmt.Println("Missing step (--value)")
-		return
-	}
-	value := c.Float64("value")
-
-	timestamp, ok := dateToTs(ts)
-	if !ok {
-		fmt.Println("Parse ts error")
-		return
-	}
-
-	f, err := OpenRRD(filename, false)
-	if err != nil {
-		fmt.Println("Open db error: " + err.Error())
-		return
-	}
-
-	fmt.Println(f.String())
-
-	err = f.Put(timestamp.Unix(), col, float32(value))
-	if err != nil {
-		fmt.Println("Put error: " + err.Error())
-	}
-	err = f.Close()
-	if err != nil {
-		fmt.Println("Close db error: " + err.Error())
 		return
 	}
 }
@@ -133,8 +59,7 @@ func putValues(c *cli.Context) {
 	}
 	ts := c.String("ts")
 	if !c.IsSet("ts") || ts == "" {
-		fmt.Println("Missing time stamp (--ts)")
-		return
+		ts = "now"
 	}
 	timestamp, ok := dateToTs(ts)
 	if !ok {
@@ -147,15 +72,15 @@ func putValues(c *cli.Context) {
 		return
 	}
 
-	var values []float64
+	var values []float32
 
 	for idx, a := range c.Args() {
-		v, err := strconv.ParseFloat(a, 64)
+		v, err := strconv.ParseFloat(a, 32)
 		if err != nil {
 			fmt.Printf("Invalid value '%s' on index %d", a, idx+1)
 			return
 		}
-		values = append(values, v)
+		values = append(values, float32(v))
 	}
 
 	f, err := OpenRRD(filename, false)
@@ -164,7 +89,7 @@ func putValues(c *cli.Context) {
 		return
 	}
 
-	//	err = f.PutRow(timestamp.Unix(), values)
+	err = f.PutRow(timestamp, values)
 	if err != nil {
 		fmt.Println("Put error: " + err.Error())
 	}
@@ -182,12 +107,12 @@ func getValue(c *cli.Context) {
 	}
 	ts := c.String("ts")
 	if !c.IsSet("ts") || ts == "" {
-		fmt.Println("Missing number of rows (-rows)")
+		fmt.Println("Missing timestamp (--ts)")
 		return
 	}
-	col := c.Int("col")
-	if !c.IsSet("col") || col < 0 {
-		fmt.Println("Missing column (-col)")
+	colsIDs, err := getContextParamIntList(c, "columns")
+	if err != nil {
+		fmt.Println("Invalid --columns parameter: ", err.Error())
 		return
 	}
 	timestamp, ok := dateToTs(ts)
@@ -200,8 +125,16 @@ func getValue(c *cli.Context) {
 		fmt.Println("Open db error: " + err.Error())
 		return
 	}
-	if value, err := f.Get(timestamp.Unix(), col); err == nil {
-		fmt.Println(value.String())
+
+	if values, err := f.Get(timestamp, colsIDs); err == nil {
+		for _, val := range values {
+			if val.Valid {
+				fmt.Print(val.Value, "; ")
+			} else {
+				fmt.Print("; ")
+			}
+		}
+		fmt.Println()
 	} else {
 		fmt.Println("Missing value")
 	}
@@ -213,51 +146,60 @@ func getValue(c *cli.Context) {
 }
 
 func getRangeValues(c *cli.Context) {
-	/*
-		filename, ok := getFilenameParam(c)
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+	tsMin := int64(0)
+	tsMinStr := c.String("begin")
+	if c.IsSet("begin") && tsMinStr != "" {
+		tsMin, ok = dateToTs(tsMinStr)
 		if !ok {
+			fmt.Println("Parsing begin date error")
 			return
 		}
-		tsMin := int64(0)
-		tsMinStr := c.String("ts-min")
-		if c.IsSet("ts-min") && tsMinStr != "" {
-			if min, ok := dateToTs(tsMinStr); ok {
-				tsMin = min.Unix()
-			}
-		}
-		tsMax := int64(-1)
-		tsMaxStr := c.String("ts-max")
-		if c.IsSet("ts-max") && tsMaxStr != "" {
-			if max, ok := dateToTs(tsMaxStr); ok {
-				tsMax = max.Unix()
-			}
-		}
+	}
+	tsMaxStr := c.String("end")
+	if !c.IsSet("end") || tsMaxStr == "" {
+		tsMaxStr = "now"
+	}
+	var tsMax int64
+	tsMax, ok = dateToTs(tsMaxStr)
+	if !ok {
+		fmt.Println("Parsing end date error")
+		return
+	}
 
-		f, err := OpenRRD(filename, true)
-		if err != nil {
-			fmt.Println("Open db error: " + err.Error())
-			return
-		}
-		if rows, err := f.GetRange(tsMin, tsMax); err == nil {
-			for _, row := range rows {
-				fmt.Printf("%10d\t", row.TS)
-				for _, col := range row.Cols {
-					if col.Valid {
-						fmt.Printf("%f", col.Value)
-					}
-					fmt.Print("\t")
+	colsIDs, err := getContextParamIntList(c, "columns")
+	if err != nil {
+		fmt.Println("Invalid --columns parameter: ", err.Error())
+		return
+	}
+
+	f, err := OpenRRD(filename, true)
+	if err != nil {
+		fmt.Println("Open db error: " + err.Error())
+		return
+	}
+	if rows, err := f.GetRange(tsMin, tsMax, colsIDs); err == nil {
+		for _, row := range rows {
+			fmt.Printf("%10d\t", row.TS)
+			for _, col := range row.Cols {
+				if col.Valid {
+					fmt.Printf("%f", col.Value)
 				}
-				fmt.Print("\n")
+				fmt.Print("\t")
 			}
-		} else {
-			fmt.Println("Error: " + err.Error())
+			fmt.Print("\n")
 		}
-		err = f.Close()
-		if err != nil {
-			fmt.Println("Init db error: " + err.Error())
-			return
-		}
-	*/
+	} else {
+		fmt.Println("Error: " + err.Error())
+	}
+	err = f.Close()
+	if err != nil {
+		fmt.Println("Init db error: " + err.Error())
+		return
+	}
 }
 
 func showInfo(c *cli.Context) {
@@ -274,21 +216,28 @@ func showInfo(c *cli.Context) {
 
 	if info, err := f.Info(); err == nil {
 		fmt.Printf("Filename: %s\n", info.Filename)
-		fmt.Printf("Rows: %d\n", info.Rows)
-		fmt.Printf("Cols: %d\n", info.Cols)
-		fmt.Printf("Step: %d\n", info.Step)
-		fmt.Printf("Used rows: %d (%0.1f%%)\n", info.UsedRows,
-			100.0*float32(info.UsedRows)/float32(info.Rows))
-		fmt.Printf("TS range: %d - %d\n", info.MinTS, info.MaxTS)
-		fmt.Printf("Function: %s\n", info.Function.String())
-
-		valuesInRows := float32(0)
-		if info.UsedRows > 0 {
-			valuesInRows = float32(info.Values) / float32(info.UsedRows*info.Cols)
+		fmt.Printf("Columns: %d\n", info.ColumnsCount)
+		for _, col := range info.Columns {
+			fmt.Printf(" - %s - %s\n", col.Name, col.Function.String())
 		}
-		valuesInDb := float32(info.Values) / float32(info.Rows*info.Cols)
-		fmt.Printf("Inserted values: %d (%0.1f%% in rows; %0.1f%% in database)\n",
-			info.Values, 100.0*valuesInRows, 100.0*valuesInDb)
+		fmt.Printf("Archives: %d\n", info.ArchivesCount)
+		for _, a := range info.Archives {
+			fmt.Printf(" - Name: %s\n", a.Name)
+			fmt.Printf("   Rows: %d\n", a.Rows)
+			fmt.Printf("   Step: %d\n", a.Step)
+			fmt.Printf("   TS range: %d - %d\n", a.MinTS, a.MaxTS)
+			fmt.Printf("   Used rows: %d (%0.1f%%)\n", a.UsedRows,
+				100.0*float32(a.UsedRows)/float32(a.Rows))
+			valuesInRows := float32(0)
+			if a.UsedRows > 0 {
+				valuesInRows = float32(a.Values) / float32(a.UsedRows*info.ColumnsCount)
+			}
+			valuesInDb := float32(a.Values) / float32(a.Rows*info.ColumnsCount)
+			fmt.Printf("   Inserted values: %d (%0.1f%% in rows; %0.1f%% in database)\n",
+				a.Values, 100.0*valuesInRows, 100.0*valuesInDb)
+		}
+	} else {
+		fmt.Println("Error: " + err.Error())
 	}
 
 	err = f.Close()
@@ -310,7 +259,8 @@ func showLast(c *cli.Context) {
 		return
 	}
 
-	//	fmt.Println(f.Last())
+	fmt.Println(f.String())
+	fmt.Println(f.Last())
 
 	if err = f.Close(); err != nil {
 		fmt.Println("Init db error: " + err.Error())
@@ -319,25 +269,107 @@ func showLast(c *cli.Context) {
 
 }
 
-func dateToTs(ts string) (time.Time, bool) {
+func dateToTs(ts string) (int64, bool) {
 	if ts == "N" || ts == "NOW" || ts == "now" {
-		return time.Now(), true
+		return time.Now().Unix(), true
 	}
 	if res, err := strconv.ParseInt(ts, 10, 64); err == nil {
-		return time.Unix(res, 0), true
+		return res, true
 	}
 
 	if t, err := time.Parse(time.RFC822, ts); err == nil {
-		return t, true
+		return t.Unix(), true
 	}
 	if t, err := time.Parse(time.RFC822Z, ts); err == nil {
-		return t, true
+		return t.Unix(), true
 	}
 	if t, err := time.Parse(time.RFC3339, ts); err == nil {
-		return t, true
+		return t.Unix(), true
 	}
 	if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
-		return t, true
+		return t.Unix(), true
 	}
-	return time.Now(), false
+	return time.Now().Unix(), false
+}
+
+func getContextParamIntList(c *cli.Context, param string) (res []int, err error) {
+	if !c.IsSet(param) {
+		return nil, nil
+	}
+	value := strings.TrimSpace(c.String(param))
+	if value == "" {
+		return nil, nil
+	}
+	return parseStrIntList(value)
+}
+
+func parseStrIntList(inp string) (res []int, err error) {
+	for _, v := range strings.Split(inp, ",") {
+		var vNum int
+		vNum, err = strconv.Atoi(v)
+		if err != nil {
+			err = fmt.Errorf("invalid value '%s'", v)
+			return
+		}
+		res = append(res, vNum)
+	}
+	return
+}
+
+func parseArchiveDef(inp string) (archives []RRDArchive, err error) {
+	for idx, v := range strings.Split(inp, ",") {
+		adef := strings.Split(v, ":")
+		a := RRDArchive{}
+		if len(adef) > 3 || len(adef) < 2 {
+			return nil, fmt.Errorf("invalid archive definition on index %d: '%s'", idx+1, v)
+		}
+		if len(adef) == 3 {
+			a.Name = adef[2]
+			if len(a.Name) > 16 {
+				a.Name = a.Name[:16]
+			}
+		} else {
+			a.Name = fmt.Sprintf("a%02d", idx+1)
+		}
+		var numRows int
+		numRows, err = strconv.Atoi(adef[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid archive definition on index %d: '%s' - invalid rows number", idx+1, v)
+		}
+		a.Rows = int32(numRows)
+		var step int
+		step, err = strconv.Atoi(adef[1])
+		if err != nil {
+			return nil, fmt.Errorf("invalid archive definition on index %d: '%s' - invalid step", idx+1, v)
+		}
+		a.Step = int64(step)
+		archives = append(archives, a)
+	}
+	return
+}
+
+func parseColumnsDef(inp string) (columns []RRDColumn, err error) {
+	for idx, v := range strings.Split(inp, ",") {
+		cdef := strings.Split(v, ":")
+		if len(cdef) > 2 || len(cdef) < 1 {
+			return nil, fmt.Errorf("invalid column definition on index %d: '%s'", idx+1, v)
+		}
+		c := RRDColumn{}
+		if len(cdef) == 2 {
+			c.Name = cdef[1]
+			if len(c.Name) > 16 {
+				c.Name = c.Name[:16]
+			}
+		}
+		if c.Name == "" {
+			c.Name = fmt.Sprintf("c%02d", idx+1)
+		}
+		funcID, ok := ParseFunctionName(cdef[0])
+		if !ok {
+			return nil, fmt.Errorf("invalid column definition on index %d: '%s' - wrong function", idx+1, v)
+		}
+		c.Function = funcID
+		columns = append(columns, c)
+	}
+	return
 }

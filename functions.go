@@ -8,6 +8,7 @@ const (
 	F_MINIMUM
 	F_SUM
 	F_COUNT
+	F_LAST
 )
 
 // Function is function ID applied on incoming & existing data
@@ -25,10 +26,13 @@ func (f Function) String() string {
 		return "maximum"
 	case F_COUNT:
 		return "count"
+	case F_LAST:
+		return "last"
 	}
 	return "unknown function"
 }
 
+// Apply functions to previous and new value; return processed Value.
 func (f Function) Apply(v1, v2 Value) Value {
 	if !v1.Valid {
 		return v2
@@ -54,10 +58,12 @@ func (f Function) Apply(v1, v2 Value) Value {
 		}
 	case F_COUNT:
 		v.Value = v1.Value + 1
+	case F_LAST:
 	}
 	return v
 }
 
+// ParseFunctionName return function by name
 func ParseFunctionName(name string) (Function, bool) {
 	var funcID Function
 	switch strings.ToLower(name) {
@@ -71,6 +77,8 @@ func ParseFunctionName(name string) (Function, bool) {
 		funcID = F_SUM
 	case "count":
 		funcID = F_COUNT
+	case "last":
+		funcID = F_LAST
 	default:
 		return 0, false
 	}

@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/codegangsta/cli"
 	"os"
+
+	"github.com/codegangsta/cli"
 )
 
 func main() {
@@ -22,60 +23,32 @@ func main() {
 			Name:  "init",
 			Usage: "init RRD file",
 			Flags: []cli.Flag{
-				cli.IntFlag{
-					Name:  "rows",
-					Value: 0,
-					Usage: "number of rows",
-				},
-				cli.IntFlag{
-					Name:  "cols",
-					Value: 0,
-					Usage: "number of cols",
-				},
-				cli.IntFlag{
-					Name:  "step",
-					Value: 0,
-					Usage: "interval between rows (in sec)",
+				cli.StringFlag{
+					Name:  "columns, c",
+					Value: "",
+					Usage: "columns definition in form: function[:col name],function[:col name],.... Functions: average/avg/sum/min/minimum/max/maximum/count/last",
 				},
 				cli.StringFlag{
-					Name:  "function",
-					Value: "average",
-					Usage: "function applied for data matching one interval (average, sum, min, max, count)",
+					Name:  "archives, a",
+					Value: "",
+					Usage: "archives definitions in form: rows:step[:archive name],rows:step[:name]...",
 				},
 			},
 			Action: initDB,
 		},
 		{
-			Name:    "put",
-			Aliases: []string{"p"},
-			Usage:   "put value to RRD file",
-			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "ts",
-					Value: "",
-					Usage: "time stamp (in sec, date, N/now/NOW)",
-				},
-				cli.IntFlag{
-					Name:  "col",
-					Value: 0,
-					Usage: "destination column",
-				},
-				cli.Float64Flag{
-					Name:  "value",
-					Value: 0,
-					Usage: "value to insert",
-				},
-			},
-			Action: putValue,
-		},
-		{
-			Name:  "put-values",
+			Name:  "put",
 			Usage: "put many values into db (as args)",
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:  "ts",
 					Value: "",
 					Usage: "time stamp (in sec, date, N/now/NOW)",
+				},
+				cli.StringFlag{
+					Name:  "columns, c",
+					Value: "",
+					Usage: "optional destination columns number separated by comma",
 				},
 			},
 			Action: putValues,
@@ -90,10 +63,10 @@ func main() {
 					Value: "",
 					Usage: "time stamp (in sec, date, N/now/NOW)",
 				},
-				cli.IntFlag{
-					Name:  "col",
-					Value: 0,
-					Usage: "destination column",
+				cli.StringFlag{
+					Name:  "columns, c",
+					Value: "",
+					Usage: "optional columns to get",
 				},
 			},
 			Action: getValue,
@@ -104,14 +77,14 @@ func main() {
 			Usage:   "get values from RRD file",
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name:  "ts-min",
+					Name:  "begin, b",
 					Value: "",
 					Usage: "time stamp (in sec, date, N/now/NOW)",
 				},
 				cli.StringFlag{
-					Name:  "ts-max",
-					Value: "",
-					Usage: "destination column",
+					Name:  "end, e",
+					Value: "now",
+					Usage: "time stamp (in sec, date, N/now/NOW)",
 				},
 			},
 			Action: getRangeValues,
