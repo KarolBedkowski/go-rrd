@@ -186,9 +186,25 @@ func getRangeValues(c *cli.Context) {
 		fmt.Println("Open db error: " + err.Error())
 		return
 	}
+
+	var timeFmt func(int64) string
+	if c.GlobalIsSet("format-ts") {
+		format := c.String("custom-ts-format")
+		if format == "" {
+			format = time.RFC3339
+		}
+		timeFmt = func(ts int64) string {
+			return time.Unix(ts, 0).Format(format)
+		}
+	} else {
+		timeFmt = func(ts int64) string {
+			return fmt.Sprintf("%10d", ts)
+		}
+	}
+
 	if rows, err := f.GetRange(tsMin, tsMax, colsIDs); err == nil {
 		for _, row := range rows {
-			fmt.Printf("%10d\t", row.TS)
+			fmt.Print(timeFmt(row.TS), "\t")
 			for _, col := range row.Values {
 				if col.Valid {
 					fmt.Printf("%f", col.Value)
@@ -249,6 +265,20 @@ func showLast(c *cli.Context) {
 
 }
 
+var timeFormats = []string{
+	time.RFC822,
+	time.RFC822Z,
+	time.RFC3339,
+	time.RFC3339Nano,
+	"2006-01-02T15:04:05",
+	"2006-01-02T15:04",
+	"2006-01-02T15",
+	"2006-01-02 15:04:05",
+	"2006-01-02 15:04",
+	"2006-01-02 15",
+	"2006-01-02",
+}
+
 func dateToTs(ts string) (int64, bool) {
 	if ts == "N" || ts == "NOW" || ts == "now" {
 		return time.Now().Unix(), true
@@ -261,17 +291,10 @@ func dateToTs(ts string) (int64, bool) {
 		return time.Now().Add(d).Unix(), true
 	}
 
-	if t, err := time.Parse(time.RFC822, ts); err == nil {
-		return t.Unix(), true
-	}
-	if t, err := time.Parse(time.RFC822Z, ts); err == nil {
-		return t.Unix(), true
-	}
-	if t, err := time.Parse(time.RFC3339, ts); err == nil {
-		return t.Unix(), true
-	}
-	if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
-		return t.Unix(), true
+	for _, format := range timeFormats {
+		if t, err := time.Parse(format, ts); err == nil {
+			return t.Unix(), true
+		}
 	}
 	return time.Now().Unix(), false
 }

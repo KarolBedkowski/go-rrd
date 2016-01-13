@@ -17,6 +17,15 @@ func main() {
 			Value: "",
 			Usage: "RDD file name",
 		},
+		cli.BoolFlag{
+			Name:  "format-ts",
+			Usage: "human-readable time in output",
+		},
+		cli.StringFlag{
+			Name:  "custom-ts-format",
+			Value: "2006-01-02T15:04:05Z07:00",
+			Usage: "time stamp formatting string",
+		},
 	}
 	app.Commands = []cli.Command{
 		{
