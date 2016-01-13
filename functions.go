@@ -3,12 +3,12 @@ package main
 import "strings"
 
 const (
-	F_AVERAGE Function = iota
-	F_MAXIMUM
-	F_MINIMUM
-	F_SUM
-	F_COUNT
-	F_LAST
+	FAverage Function = iota
+	FMaximum
+	FMinimum
+	FSum
+	FCount
+	FLast
 )
 
 // Function is function ID applied on incoming & existing data
@@ -16,17 +16,17 @@ type Function int
 
 func (f Function) String() string {
 	switch f {
-	case F_AVERAGE:
+	case FAverage:
 		return "average"
-	case F_SUM:
+	case FSum:
 		return "sum"
-	case F_MINIMUM:
+	case FMinimum:
 		return "minimum"
-	case F_MAXIMUM:
+	case FMaximum:
 		return "maximum"
-	case F_COUNT:
+	case FCount:
 		return "count"
-	case F_LAST:
+	case FLast:
 		return "last"
 	}
 	return "unknown function"
@@ -44,21 +44,21 @@ func (f Function) Apply(v1, v2 Value) Value {
 		Counter: v1.Counter + 1,
 	}
 	switch f {
-	case F_AVERAGE:
+	case FAverage:
 		v.Value = (v1.Value*float32(v1.Counter) + v.Value) / float32(v1.Counter+1)
-	case F_SUM:
+	case FSum:
 		v.Value = v1.Value + v2.Value
-	case F_MINIMUM:
+	case FMinimum:
 		if v.Value > v1.Value {
 			v.Value = v1.Value
 		}
-	case F_MAXIMUM:
+	case FMaximum:
 		if v.Value < v1.Value {
 			v.Value = v1.Value
 		}
-	case F_COUNT:
+	case FCount:
 		v.Value = v1.Value + 1
-	case F_LAST:
+	case FLast:
 	}
 	return v
 }
@@ -68,17 +68,17 @@ func ParseFunctionName(name string) (Function, bool) {
 	var funcID Function
 	switch strings.ToLower(name) {
 	case "", "average", "avg":
-		funcID = F_AVERAGE
+		funcID = FAverage
 	case "minimum", "min":
-		funcID = F_MINIMUM
+		funcID = FMinimum
 	case "maximum", "max":
-		funcID = F_MAXIMUM
+		funcID = FMaximum
 	case "sum":
-		funcID = F_SUM
+		funcID = FSum
 	case "count":
-		funcID = F_COUNT
+		funcID = FCount
 	case "last":
-		funcID = F_LAST
+		funcID = FLast
 	default:
 		return 0, false
 	}

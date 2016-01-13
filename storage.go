@@ -2,11 +2,9 @@ package main
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"strings"
 )
 
@@ -18,261 +16,241 @@ archives definitions[archives count]
 archives[archives count]
 */
 
-const (
-	fileVersion = int32(1)
-	fileMagic   = int64(1038472294759683202)
-)
-
 type (
-	// rrdHeader is file header
-	rrdHeader struct {
+	// BinaryFileStorage use binary encoding for storing files
+	BinaryFileStorage struct {
+		filename string
+		header   bfHeader
+		readonly bool
+
+		columns  []bfColumn
+		archives []bfArchive
+
+		f *os.File
+
+		rowSize int
+	}
+
+	// file header
+	bfHeader struct {
 		Version       int32
 		ColumnsCount  int16
 		ArchivesCount int16
 		Magic         int64
 	}
 
-	// RRDColumn define one column
-	RRDColumn struct {
-		Name     string   // byte[16]
-		Function Function // int32
+	// column definition
+	bfColumn struct {
+		RRDColumn
 	}
 
-	// RRDArchive defines one archive
-	RRDArchive struct {
-		Name string // byte[16]
-		Step int64
-		Rows int32
+	// archive definition
+	bfArchive struct {
+		RRDArchive
 
 		archiveOffset int64
 		archiveSize   int64
+		rowSize       int64
 	}
 
-	archIterator struct {
-		file       *RRDFile
-		archive    *RRDArchive
+	// BinaryFileIterator is iterator for binary encoded file
+	BinaryFileIterator struct {
+		file       *BinaryFileStorage
+		archive    int
 		currentRow int
-
-		TS int64
+		ts         int64
+		begin      int64
+		end        int64
+		columns    []int
+		rowOffset  int64
 	}
 )
 
-var (
+const (
+	fileVersion    = int32(1)
+	fileMagic      = int64(1038472294759683202)
 	rrdHeaderSize  = 4 + 2 + 2 + 8
 	rrdColumnSize  = 16 + 4
 	rrdArchiveSize = 16 + 8 + 4 + 8 + 8
+	valueSize      = 4 + 4 + 8
 )
 
-func (h *rrdHeader) String() string {
-	return fmt.Sprintf("rrdHeader[%#v]", h)
+// Create new file
+func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archives []RRDArchive) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+
+	b.f = f
+	b.filename = filename
+	b.header = bfHeader{
+		Version:       fileVersion,
+		ColumnsCount:  int16(len(columns)),
+		ArchivesCount: int16(len(archives)),
+		Magic:         fileMagic,
+	}
+
+	for _, c := range columns {
+		b.columns = append(b.columns, bfColumn{c})
+	}
+
+	allHeadersLen := rrdHeaderSize + rrdColumnSize*len(columns) +
+		rrdArchiveSize*len(archives)
+
+	b.rowSize = valueSize*len(b.columns) + 8 // ts
+	b.archives = calcArchiveOffsetSize(archives, b.rowSize, allHeadersLen)
+
+	if err = writeHeader(f, b.header); err != nil {
+		return err
+	}
+	if err = writeColumnsDef(f, b.columns); err != nil {
+		return err
+	}
+	if err = writeArchivesDef(f, b.archives); err != nil {
+		return err
+	}
+
+	for _, a := range b.archives {
+		for i := 0; i < int(a.Rows); i++ {
+			if err := b.writeEmptyRow(-1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-// RRDFile is round-robin database file
-type RRDFile struct {
-	filename string
-	header   rrdHeader
-	readonly bool
-
-	columns  []RRDColumn
-	archives []RRDArchive
-
-	f *os.File
-
-	rowSize int
-}
-
-// OpenRRD open existing rrd file
-func OpenRRD(filename string, readonly bool) (*RRDFile, error) {
+// Open existing file
+func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, []RRDArchive, error) {
 	flag := os.O_RDWR
 	if readonly {
 		flag = os.O_RDONLY
 	}
 	f, err := os.OpenFile(filename, flag, 0660)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	r := &RRDFile{
-		f:        f,
-		filename: filename,
-		readonly: readonly,
-	}
+	b.f = f
+	b.filename = filename
+	b.readonly = readonly
 
 	if _, err = f.Seek(0, 0); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	r.header, err = loadHeader(r.f)
+	b.header, err = loadHeader(b.f)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	r.columns, err = loadColumnsDef(f, int(r.header.ColumnsCount))
+	b.columns, err = loadColumnsDef(f, int(b.header.ColumnsCount))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	r.archives, err = loadArchiveDef(f, int(r.header.ArchivesCount))
+	b.rowSize = valueSize*len(b.columns) + 8 // ts
+	b.archives, err = loadArchiveDef(f, int(b.header.ArchivesCount), b.rowSize)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	r.rowSize = valueSize*len(r.columns) + 8 // ts
 
-	return r, err
+	return bfColumnToRRDColumn(b.columns), bfArchiveToRRDArchive(b.archives), err
 }
 
-// NewRRDFile create new, empty RRD file
-func NewRRDFile(filename string, cols []RRDColumn, archives []RRDArchive) (*RRDFile, error) {
-	f, err := os.Create(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	r := &RRDFile{
-		f:        f,
-		filename: filename,
-		header: rrdHeader{
-			Version:       fileVersion,
-			ColumnsCount:  int16(len(cols)),
-			ArchivesCount: int16(len(archives)),
-			Magic:         fileMagic,
-		},
-		columns: cols,
-	}
-
-	allHeadersLen := rrdHeaderSize + rrdColumnSize*len(cols) +
-		rrdArchiveSize*len(archives)
-
-	r.rowSize = valueSize*len(r.columns) + 8 // ts
-	r.archives, _ = calcArchiveOffsetSize(archives, r.rowSize, allHeadersLen)
-
-	if err = writeHeader(f, r.header); err != nil {
-		return nil, err
-	}
-	if err = writeColumnsDef(f, r.columns); err != nil {
-		return nil, err
-	}
-	if err = writeArchivesDef(f, r.archives); err != nil {
-		return nil, err
-	}
-
-	for _, a := range r.archives {
-		for i := 0; i < int(a.Rows); i++ {
-			if err := r.writeEmptyRow(-1); err != nil {
-				return nil, err
-			}
-		}
-	}
-	//fmt.Printf("%+v", r)
-	return r, nil
+// Close file
+func (b *BinaryFileStorage) Close() error {
+	return b.f.Close()
 }
 
-func (r *RRDFile) String() string {
-	return fmt.Sprintf("RRDFile[%#v]", r)
-}
-
-// Close RRD file
-func (r *RRDFile) Close() error {
-	return r.f.Close()
-}
-
-// Put value into database
-func (r *RRDFile) Put(ts int64, col int, value float32) error {
-	v := Value{
-		TS:    ts,
-		Valid: true,
-		Value: value,
-	}
-	return r.PutValue(v, col)
-}
-
-func (r *RRDFile) PutValue(v Value, col int) error {
-	if r.readonly {
+// Put values into archive
+func (b *BinaryFileStorage) Put(archive int, values ...Value) error {
+	if b.readonly {
 		return fmt.Errorf("RRD file open as read-only")
 	}
+	a := b.archives[archive]
+	aTS := a.calcTS(values[0].TS)
+	rowOffset := a.calcRowOffset(aTS)
 
-	function := r.columns[col].Function
-	for _, a := range r.archives {
-		aTS := a.calcTS(v.TS)
-		rowOffset, valOffset := a.calcOffset(aTS, col, r.rowSize)
-		//fmt.Printf("PutValue info archive %s: %d, %d\n", a.Name, rowOffset, valOffset)
-		if err := r.writeValue(aTS, v, rowOffset, valOffset, function); err != nil {
+	// invalidate record when ts changed
+	if err := b.checkAndCleanRow(aTS, rowOffset); err != nil {
+		return err
+	}
+
+	for _, v := range values {
+		if _, err := b.f.Seek(rowOffset+8+int64(valueSize*v.Column), 0); err != nil {
 			return err
 		}
+		writeValue(b.f, v)
 	}
 	return nil
 }
 
-func (r *RRDFile) loadValue() (v Value, err error) {
+// Get values (selected columns) from archive
+func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, error) {
+	a := b.archives[archive]
+	aTS := a.calcTS(ts)
+	rowOffset := a.calcRowOffset(aTS)
+
+	// Read real ts
+	if _, err := b.f.Seek(rowOffset, 0); err != nil {
+		return nil, err
+	}
+
+	var rowTS int64
+	if err := binary.Read(b.f, binary.LittleEndian, &rowTS); err != nil {
+		return nil, err
+	}
+
+	if rowTS != aTS {
+		// value not found in this archive, search in next
+		return nil, nil
+	}
+	//fmt.Printf("Getting from %s - %d, %v\n", a.Name, rowOffset, cols)
+	return b.loadValues(rowOffset, rowTS, columns)
+}
+
+// Iterate create iterator for archive
+func (b *BinaryFileStorage) Iterate(archive int, begin, end int64, columns []int) (RowsIterator, error) {
+	return &BinaryFileIterator{
+		file:       b,
+		archive:    archive,
+		currentRow: -1,
+		ts:         -1,
+		begin:      begin,
+		end:        end,
+		columns:    columns,
+	}, nil
+}
+
+func (b *BinaryFileStorage) loadValue() (v Value, err error) {
 	v = Value{}
-	if err = binary.Read(r.f, binary.LittleEndian, &v.Value); err != nil {
+	if err = binary.Read(b.f, binary.LittleEndian, &v.Value); err != nil {
 		return
 	}
-	if err = binary.Read(r.f, binary.LittleEndian, &v.Counter); err != nil {
+	if err = binary.Read(b.f, binary.LittleEndian, &v.Counter); err != nil {
 		return
 	}
 	var valid int32
-	if err = binary.Read(r.f, binary.LittleEndian, &valid); err != nil {
+	if err = binary.Read(b.f, binary.LittleEndian, &valid); err != nil {
 		return
 	}
 	v.Valid = valid == 1
 	return
 }
 
-// PutValue insert value into database
-func (r *RRDFile) writeValue(ts int64, v Value, rowOffset, valOffset int64, function Function) error {
-	// write real ts
-	// invalidate record when ts changed
-	if err := r.checkAndCleanRow(ts, rowOffset); err != nil {
-		return err
-	}
-
-	if _, err := r.f.Seek(valOffset, 0); err != nil {
-		return err
-	}
-	prev, _ := r.loadValue()
-	v = function.Apply(prev, v)
-	if _, err := r.f.Seek(valOffset, 0); err != nil {
-		return err
-	}
-	return v.Write(r.f)
-}
-
-// PutRow insert many values into single row
-func (r *RRDFile) PutRow(ts int64, values []float32) error {
-	if r.readonly {
-		return errors.New("RRD file open as read-only")
-	}
-	if ts < 0 {
-		return errors.New("Missing TS in row")
-	}
-
-	if len(values) > len(r.columns) {
-		return errors.New("To many columns")
-	}
-
-	for _, a := range r.archives {
-		aTS := a.calcTS(ts)
-		rowOffset, _ := a.calcOffset(aTS, 0, r.rowSize)
-		//fmt.Printf("PutRow info archive %s: %d\n", a.Name, rowOffset)
-		if err := r.writeRow(aTS, values, rowOffset); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *RRDFile) writeRow(ts int64, values []float32, rowOffset int64) error {
+func (b *BinaryFileStorage) writeRow(ts int64, values []float32, rowOffset int64) error {
 	// invalide record when ts changed
-	if err := r.checkAndCleanRow(ts, rowOffset); err != nil {
+	if err := b.checkAndCleanRow(ts, rowOffset); err != nil {
 		return err
 	}
 	// load old values
 	var prevs []Value
 	for i := 0; i < len(values); i++ {
-		v, _ := r.loadValue()
+		v, _ := b.loadValue()
 		prevs = append(prevs, v)
 	}
 
-	if _, err := r.f.Seek(rowOffset+8, 0); err != nil {
+	if _, err := b.f.Seek(rowOffset+8, 0); err != nil {
 		return err
 	}
 	for idx, val := range values {
@@ -280,53 +258,21 @@ func (r *RRDFile) writeRow(ts int64, values []float32, rowOffset int64) error {
 			Valid: true,
 			Value: val,
 		}
-		v = r.columns[idx].Function.Apply(prevs[idx], v)
-		if err := v.Write(r.f); err != nil {
+		v = b.columns[idx].Function.Apply(prevs[idx], v)
+		if err := writeValue(b.f, v); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// Get value from database
-func (r *RRDFile) Get(ts int64, cols []int) ([]Value, error) {
-	if len(cols) == 0 {
-		for i := 0; i < len(r.columns); i++ {
-			cols = append(cols, i)
-		}
-	}
-
-	for _, a := range r.archives {
-		aTS := a.calcTS(ts)
-		rowOffset, _ := a.calcOffset(aTS, 0, r.rowSize)
-
-		// Read real ts
-		if _, err := r.f.Seek(rowOffset, 0); err != nil {
-			return nil, err
-		}
-
-		var rowTS int64
-		if err := binary.Read(r.f, binary.LittleEndian, &rowTS); err != nil {
-			return nil, err
-		}
-
-		if rowTS != aTS {
-			// value not found in this archive, search in next
-			continue
-		}
-		//fmt.Printf("Getting from %s - %d, %v\n", a.Name, rowOffset, cols)
-		return r.loadValues(rowOffset, rowTS, cols)
-	}
-	return nil, nil
-}
-
-func (r *RRDFile) loadValues(rowOffset int64, rowTS int64, cols []int) ([]Value, error) {
+func (b *BinaryFileStorage) loadValues(rowOffset int64, rowTS int64, cols []int) ([]Value, error) {
 	var values []Value
 	for _, col := range cols {
-		if _, err := r.f.Seek(rowOffset+8+int64(col*valueSize), 0); err != nil {
+		if _, err := b.f.Seek(rowOffset+8+int64(col*valueSize), 0); err != nil {
 			return nil, err
 		}
-		v, err := r.loadValue()
+		v, err := b.loadValue()
 		if err == nil {
 			v.TS = rowTS
 		} else {
@@ -337,146 +283,149 @@ func (r *RRDFile) loadValues(rowOffset int64, rowTS int64, cols []int) ([]Value,
 	return values, nil
 }
 
-func (r *RRDFile) checkAndCleanRow(ts int64, tsOffset int64) error {
-	if _, err := r.f.Seek(tsOffset, 0); err != nil {
+func (b *BinaryFileStorage) checkAndCleanRow(ts int64, tsOffset int64) error {
+	if _, err := b.f.Seek(tsOffset, 0); err != nil {
 		return err
 	}
 	var storeTS int64
-	if err := binary.Read(r.f, binary.LittleEndian, &storeTS); err != nil {
+	if err := binary.Read(b.f, binary.LittleEndian, &storeTS); err != nil {
 		return err
 	}
 	if storeTS == ts {
 		return nil
 	}
-	if _, err := r.f.Seek(tsOffset, 0); err != nil {
+	if _, err := b.f.Seek(tsOffset, 0); err != nil {
 		return err
 	}
-	if err := r.writeEmptyRow(ts); err != nil {
+	if err := b.writeEmptyRow(ts); err != nil {
 		return err
 	}
-	if _, err := r.f.Seek(tsOffset+8, 0); err != nil {
+	if _, err := b.f.Seek(tsOffset+8, 0); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *RRDFile) writeEmptyRow(ts int64) error {
-	if err := binary.Write(r.f, binary.LittleEndian, ts); err != nil {
+func (b *BinaryFileStorage) writeEmptyRow(ts int64) error {
+	if err := binary.Write(b.f, binary.LittleEndian, ts); err != nil {
 		return err
 	}
 	v := Value{}
-	for c := 0; c < int(r.header.ColumnsCount); c++ {
-		if err := v.Write(r.f); err != nil {
+	for c := 0; c < int(b.header.ColumnsCount); c++ {
+		if err := writeValue(b.f, v); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// Row keep values for all columns
-type Row struct {
-	TS   int64
-	Cols []Value
+// TS is time stamp
+func (i *BinaryFileIterator) TS() int64 {
+	return i.ts
 }
 
-// Rows is list of rows
-type Rows []Row
-
-func (r Rows) Len() int           { return len(r) }
-func (r Rows) Swap(i, j int)      { r[i], r[j] = r[j], r[i] }
-func (r Rows) Less(i, j int) bool { return r[i].TS < r[j].TS }
-
-// GetRange finds all records in given range
-func (r *RRDFile) GetRange(minTS, maxTS int64, cols []int) (Rows, error) {
-	if len(cols) == 0 {
-		for i := 0; i < len(r.columns); i++ {
-			cols = append(cols, i)
+// Next move to next row, return io.EOF on error
+func (i *BinaryFileIterator) Next() error {
+	a := i.file.archives[i.archive]
+	for {
+		if i.currentRow >= int(a.Rows)-1 {
+			return io.EOF
 		}
-	}
-
-	last := r.Last()
-	var archive *RRDArchive
-	for _, a := range r.archives {
-		archive = &a
-		// archive range
-		aMinTS := last - int64(a.Rows)*a.Step
-		if minTS >= aMinTS {
-			break
-		}
-	}
-	//fmt.Printf("Using archive %s\n", archive)
-	rows, err := r.getRange(archive, minTS, maxTS, cols)
-	if err == nil {
-		sort.Sort(rows)
-	}
-	return rows, err
-}
-
-func (r *RRDFile) getRange(a *RRDArchive, min, max int64, cols []int) (Rows, error) {
-	offset := a.archiveOffset
-	var rows Rows
-	for y := int32(0); y < a.Rows; y++ {
-		if _, err := r.f.Seek(offset, 0); err != nil {
-			return nil, err
+		i.currentRow++
+		rowOffset := int64(i.currentRow*i.file.rowSize) + a.archiveOffset
+		if _, err := i.file.f.Seek(rowOffset, 0); err != nil {
+			return err
 		}
 		var ts int64
-		if err := binary.Read(r.f, binary.LittleEndian, &ts); err != nil {
-			return nil, err
-		}
-		if ts > -1 && ts >= min && ts <= max {
-			values, err := r.loadValues(offset, ts, cols)
-			if err != nil {
-				return nil, err
-			}
-			row := Row{
-				TS:   ts,
-				Cols: values,
-			}
-			rows = append(rows, row)
-		}
-		offset += int64(r.rowSize)
-	}
-	return rows, nil
-}
-
-// Last return last timestamp from db
-func (r *RRDFile) Last() int64 {
-	var last int64
-	offset := r.archives[0].archiveOffset
-	for y := 0; y < int(r.archives[0].Rows); y++ {
-		if _, err := r.f.Seek(offset, 0); err != nil {
-			return last
-		}
-		var ts int64
-		if err := binary.Read(r.f, binary.LittleEndian, &ts); err != nil {
-			return last
+		if err := binary.Read(i.file.f, binary.LittleEndian, &ts); err != nil {
+			return err
 		}
 		if ts >= 0 {
-			if ts > last {
-				last = ts
-			} else {
-				break
-			}
+			i.ts = ts
+			i.rowOffset = rowOffset
+			return nil
 		}
-		offset += int64(r.rowSize)
 	}
-	return last
 }
 
-func calcArchiveOffsetSize(archives []RRDArchive, rowSize int, baseOffset int) (out []RRDArchive, allSize int64) {
-	offset := int64(baseOffset)
-	for _, a := range archives {
-		a.archiveOffset = int64(offset)
-		a.archiveSize = int64(int(a.Rows) * rowSize)
-		out = append(out, a)
-		offset += int64(a.archiveSize)
-		allSize += a.archiveSize
+// Value return value for one column in current row
+func (i *BinaryFileIterator) Value(column int) (*Value, error) {
+	if i.ts < 0 {
+		return nil, fmt.Errorf("no next() or no data")
+	}
+	valOffset := i.rowOffset + 8 + int64(column)*int64(valueSize)
+	if _, err := i.file.f.Seek(valOffset, 0); err != nil {
+		return nil, err
+	}
+	v, err := i.file.loadValue()
+	if err != nil {
+		return nil, err
+	}
+	v.TS = i.ts
+	return &v, nil
+}
+
+// Values return all values according to columns defined during creating iterator
+func (i *BinaryFileIterator) Values() (values []Value, err error) {
+	if i.ts < 0 {
+		return nil, fmt.Errorf("no next() or no data")
+	}
+	for _, col := range i.columns {
+		valOffset := i.rowOffset + 8 + int64(col)*int64(valueSize)
+		if _, err = i.file.f.Seek(valOffset, 0); err != nil {
+			return nil, err
+		}
+		var v Value
+		if v, err = i.file.loadValue(); err != nil {
+			return nil, err
+		}
+		v.TS = i.ts
+		values = append(values, v)
+	}
+	return values, nil
+}
+
+func (a *bfArchive) calcRowOffset(ts int64) (rowOffset int64) {
+	rowNum := (ts / a.Step) % int64(a.Rows)
+	rowOffset = int64(a.archiveOffset) + a.rowSize*rowNum
+	return
+}
+
+func (a *bfArchive) calcTS(ts int64) int64 {
+	return int64(ts/a.Step) * a.Step
+}
+
+func bfColumnToRRDColumn(cols []bfColumn) (res []RRDColumn) {
+	for _, c := range cols {
+		res = append(res, c.RRDColumn)
 	}
 	return
 }
 
-func loadHeader(r io.Reader) (header rrdHeader, err error) {
-	header = rrdHeader{}
+func bfArchiveToRRDArchive(a []bfArchive) (res []RRDArchive) {
+	for _, c := range a {
+		res = append(res, c.RRDArchive)
+	}
+	return
+}
+
+func calcArchiveOffsetSize(archives []RRDArchive, rowSize int, baseOffset int) (out []bfArchive) {
+	offset := int64(baseOffset)
+	for _, a := range archives {
+		bfa := bfArchive{
+			RRDArchive: a,
+			rowSize:    int64(rowSize),
+		}
+		bfa.archiveOffset = int64(offset)
+		bfa.archiveSize = int64(int(a.Rows) * rowSize)
+		out = append(out, bfa)
+		offset += int64(bfa.archiveSize)
+	}
+	return
+}
+
+func loadHeader(r io.Reader) (header bfHeader, err error) {
+	header = bfHeader{}
 	if err = binary.Read(r, binary.LittleEndian, &header.Version); err != nil {
 		return
 	}
@@ -501,7 +450,7 @@ func loadHeader(r io.Reader) (header rrdHeader, err error) {
 
 }
 
-func writeHeader(w io.Writer, header rrdHeader) (err error) {
+func writeHeader(w io.Writer, header bfHeader) (err error) {
 	if err = binary.Write(w, binary.LittleEndian, header.Version); err != nil {
 		return
 	}
@@ -517,7 +466,7 @@ func writeHeader(w io.Writer, header rrdHeader) (err error) {
 	return nil
 }
 
-func loadColumnsDef(r io.Reader, colCount int) (cols []RRDColumn, err error) {
+func loadColumnsDef(r io.Reader, colCount int) (cols []bfColumn, err error) {
 	for i := 0; i < colCount; i++ {
 		buf := make([]byte, 16, 16)
 		if err = binary.Read(r, binary.LittleEndian, &buf); err != nil {
@@ -527,16 +476,19 @@ func loadColumnsDef(r io.Reader, colCount int) (cols []RRDColumn, err error) {
 		if err = binary.Read(r, binary.LittleEndian, &funcID); err != nil {
 			return
 		}
-		col := RRDColumn{
-			Name:     strings.TrimRight(string(buf), "\x00"),
-			Function: Function(funcID),
+		col := bfColumn{
+			RRDColumn: RRDColumn{
+
+				Name:     strings.TrimRight(string(buf), "\x00"),
+				Function: Function(funcID),
+			},
 		}
 		cols = append(cols, col)
 	}
 	return
 }
 
-func writeColumnsDef(w io.Writer, cols []RRDColumn) (err error) {
+func writeColumnsDef(w io.Writer, cols []bfColumn) (err error) {
 	for _, col := range cols {
 		name := make([]byte, 16, 16)
 		if len(col.Name) > 16 {
@@ -554,19 +506,22 @@ func writeColumnsDef(w io.Writer, cols []RRDColumn) (err error) {
 	return
 }
 
-func loadArchiveDef(r io.Reader, archCount int) (archives []RRDArchive, err error) {
+func loadArchiveDef(r io.Reader, archCount int, rowSize int) (archives []bfArchive, err error) {
 	for i := 0; i < archCount; i++ {
 		buf := make([]byte, 16, 16)
 		if err = binary.Read(r, binary.LittleEndian, &buf); err != nil {
 			return
 		}
-		a := RRDArchive{
-			Name: strings.TrimRight(string(buf), "\x00"),
+		a := bfArchive{
+			RRDArchive: RRDArchive{
+				Name: strings.TrimRight(string(buf), "\x00"),
+			},
+			rowSize: int64(rowSize),
 		}
-		if err = binary.Read(r, binary.LittleEndian, &a.Step); err != nil {
+		if err = binary.Read(r, binary.LittleEndian, &a.RRDArchive.Step); err != nil {
 			return
 		}
-		if err = binary.Read(r, binary.LittleEndian, &a.Rows); err != nil {
+		if err = binary.Read(r, binary.LittleEndian, &a.RRDArchive.Rows); err != nil {
 			return
 		}
 		if err = binary.Read(r, binary.LittleEndian, &a.archiveSize); err != nil {
@@ -580,7 +535,7 @@ func loadArchiveDef(r io.Reader, archCount int) (archives []RRDArchive, err erro
 	return
 }
 
-func writeArchivesDef(w io.Writer, archives []RRDArchive) (err error) {
+func writeArchivesDef(w io.Writer, archives []bfArchive) (err error) {
 	for _, a := range archives {
 		name := make([]byte, 16, 16)
 		if len(a.Name) > 16 {
@@ -607,156 +562,17 @@ func writeArchivesDef(w io.Writer, archives []RRDArchive) (err error) {
 	return
 }
 
-func (a *RRDArchive) calcOffset(ts int64, col int, rowSize int) (rowOffset, valOffset int64) {
-	rowNum := (ts / a.Step) % int64(a.Rows)
-	rowOffset = int64(a.archiveOffset) + int64(rowSize)*rowNum
-	valOffset = rowOffset + 8 // TS
-	valOffset += int64(col) * int64(valueSize)
+func writeValue(w io.Writer, v Value) (err error) {
+	if err = binary.Write(w, binary.LittleEndian, v.Value); err != nil {
+		return
+	}
+	if err = binary.Write(w, binary.LittleEndian, v.Counter); err != nil {
+		return
+	}
+	if v.Valid {
+		err = binary.Write(w, binary.LittleEndian, int32(1))
+	} else {
+		err = binary.Write(w, binary.LittleEndian, int32(0))
+	}
 	return
-}
-
-func (a *RRDArchive) calcTS(ts int64) int64 {
-	return int64(ts/a.Step) * a.Step
-}
-
-func (r *RRDFile) iterate(archive *RRDArchive) *archIterator {
-	return &archIterator{
-		file:       r,
-		archive:    archive,
-		currentRow: -1,
-		TS:         -1,
-	}
-}
-
-func (a *archIterator) Next() (ts int64, ok bool) {
-	for {
-		if a.currentRow >= int(a.archive.Rows)-1 {
-			return -1, false
-		}
-		a.currentRow++
-		rowOffset := int64(a.currentRow*a.file.rowSize) + a.archive.archiveOffset
-		if _, err := a.file.f.Seek(rowOffset, 0); err != nil {
-			return -1, false
-		}
-
-		if err := binary.Read(a.file.f, binary.LittleEndian, &ts); err != nil {
-			return -1, false
-		}
-		if ts >= 0 {
-			a.TS = ts
-			return ts, true
-		}
-	}
-	a.TS = -1
-	return -1, false
-}
-
-func (a *archIterator) Value(column int) (*Value, error) {
-	if a.TS < 0 {
-		return nil, fmt.Errorf("no next() or no data")
-	}
-	rowOffset := int64(a.currentRow*a.file.rowSize) + a.archive.archiveOffset
-	valOffset := rowOffset + 8 + int64(column)*int64(valueSize)
-	if _, err := a.file.f.Seek(valOffset, 0); err != nil {
-		return nil, err
-	}
-	v, err := a.file.loadValue()
-	if err != nil {
-		return nil, err
-	}
-	v.TS = a.TS
-	return &v, nil
-}
-
-func (a *archIterator) Values() ([]Value, error) {
-	if a.TS < 0 {
-		return nil, fmt.Errorf("no next() or no data")
-	}
-	rowOffset := int64(a.currentRow*a.file.rowSize) + a.archive.archiveOffset
-	valOffset := rowOffset + 8
-	if _, err := a.file.f.Seek(valOffset, 0); err != nil {
-		return nil, err
-	}
-	var values []Value
-	for col := 0; col < len(a.file.columns); col++ {
-		v, err := a.file.loadValue()
-		if err != nil {
-			return nil, err
-		}
-		v.TS = a.TS
-		values = append(values, v)
-	}
-	return values, nil
-
-}
-
-type (
-	// RRDFileInfo holds informations about rrd file
-	RRDFileInfo struct {
-		Filename      string
-		ColumnsCount  int
-		ArchivesCount int
-
-		Columns  []RRDColumn
-		Archives []RRDArchiveInfo
-	}
-
-	// RRDArchiveInfo keeps information about archive
-	RRDArchiveInfo struct {
-		Name     string
-		Rows     int
-		Step     int64
-		UsedRows int
-		MinTS    int64
-		MaxTS    int64
-		Values   int64
-	}
-)
-
-// Info return RRDFileInfo structure for current file
-func (r *RRDFile) Info() (*RRDFileInfo, error) {
-	res := &RRDFileInfo{
-		Filename:      r.filename,
-		ColumnsCount:  len(r.columns),
-		ArchivesCount: len(r.archives),
-		Columns:       r.columns,
-	}
-
-	for _, a := range r.archives {
-		arch := RRDArchiveInfo{
-			Name: a.Name,
-			Rows: int(a.Rows),
-			Step: a.Step,
-		}
-		// Count rows & Values
-		if _, err := r.f.Seek(a.archiveOffset, 0); err != nil {
-			return nil, err
-		}
-		iter := r.iterate(&a)
-		for {
-			ts, ok := iter.Next()
-			if !ok {
-				break
-			}
-			arch.UsedRows++
-			if ts < arch.MinTS || arch.MinTS == 0 {
-				arch.MinTS = ts
-			}
-			if ts > arch.MaxTS {
-				arch.MaxTS = ts
-			}
-			values, err := iter.Values()
-			if err != nil {
-				return nil, err
-			}
-			for _, value := range values {
-				if value.Valid {
-					arch.Values++
-				}
-			}
-
-		}
-		res.Archives = append(res.Archives, arch)
-	}
-	return res, nil
 }

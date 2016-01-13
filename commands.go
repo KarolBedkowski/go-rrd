@@ -38,7 +38,7 @@ func initDB(c *cli.Context) {
 		return
 	}
 
-	f, err := NewRRDFile(filename, columns, archives)
+	f, err := NewRRD(filename, columns, archives)
 	if err != nil {
 		fmt.Println("Init db error: " + err.Error())
 		return
@@ -73,7 +73,7 @@ func putValues(c *cli.Context) {
 		return
 	}
 
-	var values []float32
+	var values []Value
 
 	for idx, a := range c.Args() {
 		v, err := strconv.ParseFloat(a, 32)
@@ -81,7 +81,11 @@ func putValues(c *cli.Context) {
 			fmt.Printf("Invalid value '%s' on index %d", a, idx+1)
 			return
 		}
-		values = append(values, float32(v))
+		values = append(values, Value{
+			TS:    timestamp,
+			Value: float32(v),
+			Valid: true,
+		})
 	}
 
 	f, err := OpenRRD(filename, false)
@@ -90,7 +94,7 @@ func putValues(c *cli.Context) {
 		return
 	}
 
-	err = f.PutRow(timestamp, values)
+	err = f.PutValues(values...)
 	if err != nil {
 		fmt.Println("Put error: " + err.Error())
 	}
@@ -185,7 +189,7 @@ func getRangeValues(c *cli.Context) {
 	if rows, err := f.GetRange(tsMin, tsMax, colsIDs); err == nil {
 		for _, row := range rows {
 			fmt.Printf("%10d\t", row.TS)
-			for _, col := range row.Cols {
+			for _, col := range row.Values {
 				if col.Valid {
 					fmt.Printf("%f", col.Value)
 				}
@@ -354,7 +358,7 @@ func parseColumnsDef(inp string) (columns []RRDColumn, err error) {
 	return
 }
 
-func printRRDInfo(f *RRDFile) {
+func printRRDInfo(f *RRD) {
 	if info, err := f.Info(); err == nil {
 		fmt.Printf("Filename: %s\n", info.Filename)
 		fmt.Printf("Columns: %d\n", info.ColumnsCount)
