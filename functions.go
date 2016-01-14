@@ -37,15 +37,11 @@ func (f Function) Apply(v1, v2 Value) Value {
 	if !v1.Valid {
 		return v2
 	}
-	v := Value{
-		TS:      v2.TS,
-		Valid:   v2.Valid,
-		Value:   v2.Value,
-		Counter: v1.Counter + 1,
-	}
+	v := Value(v2)
+	v.Counter = v1.Counter + 1
 	switch f {
 	case FAverage:
-		v.Value = (v1.Value*float32(v1.Counter) + v.Value) / float32(v1.Counter+1)
+		v.Value = (v1.Value*float32(v1.Counter) + v2.Value) / float32(v1.Counter+1)
 	case FSum:
 		v.Value = v1.Value + v2.Value
 	case FMinimum:

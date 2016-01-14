@@ -131,7 +131,7 @@ func getValue(c *cli.Context) {
 		return
 	}
 
-	if values, err := f.Get(timestamp, colsIDs); err == nil {
+	if values, err := f.Get(timestamp, colsIDs...); err == nil {
 		for _, val := range values {
 			if val.Valid {
 				fmt.Print(val.Value, "; ")

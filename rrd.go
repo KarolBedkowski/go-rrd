@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 )
 
 type (
@@ -46,7 +47,7 @@ type (
 		Create(filename string, columns []RRDColumn, archives []RRDArchive) error
 		Open(filename string, readonly bool) ([]RRDColumn, []RRDArchive, error)
 		Close() error
-		Put(archive int, v ...Value) error
+		Put(archive int, ts int64, v ...Value) error
 		Get(archive int, ts int64, columns []int) ([]Value, error)
 
 		//Iterate over valid rows in optional begin-end range using RowsIterator
@@ -108,6 +109,8 @@ func NewRRD(filename string, columns []RRDColumn, archives []RRDArchive) (*RRD, 
 		filename: filename,
 		storage:  &BinaryFileStorage{},
 		readonly: false,
+		columns:  columns,
+		archives: archives,
 	}
 	err := rrd.storage.Create(filename, columns, archives)
 	if err != nil {
@@ -144,20 +147,18 @@ func (r *RRD) PutValues(values ...Value) error {
 	}
 
 	cols := make([]int, 0, len(values))
-	colsSum := 0
 	for _, v := range values {
 		cols = append(cols, v.Column)
-		colsSum += v.Column
 	}
-	if colsSum == 0 { // no columns defined
+	if len(cols) == 0 { // no columns defined
 		cols = r.allColumnsIDs()
 	}
 
-	// all values should have this same TS
-	ts := values[0].TS
-
 	for aID, a := range r.archives {
-		fmt.Printf("Updating archive %s\n", a.Name)
+		//fmt.Printf("\nUpdating archive %s; cols=%v\n", a.Name, cols)
+
+		// all values should have this same TS
+		ts := a.calcTS(values[0].TS)
 
 		// get previous values
 		preValues, err := r.storage.Get(aID, ts, cols)
@@ -165,18 +166,30 @@ func (r *RRD) PutValues(values ...Value) error {
 			return err
 		}
 		// update
-		updatedVal := make([]Value, 0, len(values))
-		for i, v := range values {
-			function := r.columns[v.Column].Function
-			uv := v
-			if preValues != nil {
+		var updatedVal []Value
+		if len(preValues) > 0 {
+			for i, v := range values {
 				pv := preValues[i]
-				uv = function.Apply(pv, v)
+				col := cols[i]
+				if pv.Column != col {
+					panic(fmt.Errorf("invalid column %d on %d in %v", pv.Column, i, cols))
+				}
+				if v.Column != col {
+					panic(fmt.Errorf("invalid column in val %d != %v", v.Column, col))
+				}
+				function := r.columns[col].Function
+				uv := function.Apply(pv, v)
+				updatedVal = append(updatedVal, uv)
 			}
-			updatedVal = append(updatedVal, uv)
+		} else {
+			for _, v := range values {
+				v.Counter = 1
+				updatedVal = append(updatedVal, v)
+			}
 		}
+
 		// write updated values
-		if err = r.storage.Put(aID, updatedVal...); err != nil {
+		if err = r.storage.Put(aID, ts, updatedVal...); err != nil {
 			return err
 		}
 	}
@@ -184,13 +197,13 @@ func (r *RRD) PutValues(values ...Value) error {
 }
 
 // Get get values for timestamp.
-func (r *RRD) Get(ts int64, columns []int) ([]Value, error) {
+func (r *RRD) Get(ts int64, columns ...int) ([]Value, error) {
 	if len(columns) == 0 {
 		columns = r.allColumnsIDs()
 	}
 
 	for aID := range r.archives {
-		values, err := r.storage.Get(aID, ts, columns)
+		values, err := r.getFromArchive(aID, ts, columns)
 		if values != nil || err != nil {
 			return values, err
 		}
@@ -198,9 +211,15 @@ func (r *RRD) Get(ts int64, columns []int) ([]Value, error) {
 	return nil, nil
 }
 
+func (r *RRD) getFromArchive(aID int, ts int64, columns []int) ([]Value, error) {
+	a := r.archives[aID]
+	ts = a.calcTS(ts)
+	return r.storage.Get(aID, ts, columns)
+}
+
 // Last return last timestamp from db
 func (r *RRD) Last() (int64, error) {
-	var last int64
+	var last int64 = -1
 	i, err := r.storage.Iterate(0, 0, -1, nil)
 	if err != nil {
 		return -1, err
@@ -236,15 +255,17 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int) (Rows, error) {
 		return nil, err
 	}
 	var archiveID int
+	var aMinTS int64
 	for aID, a := range r.archives {
 		archiveID = aID
 		// archive range
-		aMinTS := last - int64(a.Rows)*a.Step
+		aMinTS = a.calcTS(last - int64(a.Rows)*a.Step)
 		if minTS >= aMinTS {
 			break
 		}
 	}
-	i, err := r.storage.Iterate(archiveID, minTS, maxTS, columns)
+
+	i, err := r.storage.Iterate(archiveID, aMinTS, maxTS, columns)
 	if err != nil {
 		return nil, err
 	}
@@ -333,6 +354,40 @@ func (r *RRD) infoArchive(aID int, a RRDArchive) (RRDArchiveInfo, error) {
 
 	}
 	return arch, nil
+}
+
+// LowLevelDebugDump return informations useful to debug
+func (r *RRD) LowLevelDebugDump() string {
+	var res []string
+	res = append(res, fmt.Sprintf("Filename: %s", r.filename))
+	res = append(res, fmt.Sprintf("ColumnsCount: %d", len(r.columns)))
+	res = append(res, fmt.Sprintf("Columns: %#v", r.columns))
+	res = append(res, fmt.Sprintf("ArchivesCount: %d", len(r.archives)))
+	for aID, a := range r.archives {
+		res = append(res, fmt.Sprintf("Archives: %d -  %3v", aID, a))
+		iter, _ := r.storage.Iterate(aID, 0, -1, r.allColumnsIDs())
+		for {
+			err := iter.Next()
+			if err == io.EOF {
+				break
+			}
+			row := fmt.Sprintf("  %d ", iter.TS())
+
+			values, _ := iter.Values()
+			for _, value := range values {
+				row += value.String() + ", "
+			}
+			res = append(res, row)
+		}
+	}
+	return strings.Join(res, "\n")
+}
+
+func (a *RRDArchive) calcTS(ts int64) (ats int64) {
+	if ts < 1 {
+		return ts
+	}
+	return int64(ts/a.Step) * a.Step
 }
 
 func (r Rows) Len() int           { return len(r) }

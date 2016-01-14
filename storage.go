@@ -118,7 +118,8 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 			}
 		}
 	}
-	return nil
+
+	return f.Sync()
 }
 
 // Open existing file
@@ -163,16 +164,15 @@ func (b *BinaryFileStorage) Close() error {
 }
 
 // Put values into archive
-func (b *BinaryFileStorage) Put(archive int, values ...Value) error {
+func (b *BinaryFileStorage) Put(archive int, ts int64, values ...Value) error {
 	if b.readonly {
 		return fmt.Errorf("RRD file open as read-only")
 	}
 	a := b.archives[archive]
-	aTS := a.calcTS(values[0].TS)
-	rowOffset := a.calcRowOffset(aTS)
+	rowOffset := a.calcRowOffset(ts)
 
 	// invalidate record when ts changed
-	if err := b.checkAndCleanRow(aTS, rowOffset); err != nil {
+	if err := b.checkAndCleanRow(ts, rowOffset); err != nil {
 		return err
 	}
 
@@ -188,8 +188,7 @@ func (b *BinaryFileStorage) Put(archive int, values ...Value) error {
 // Get values (selected columns) from archive
 func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, error) {
 	a := b.archives[archive]
-	aTS := a.calcTS(ts)
-	rowOffset := a.calcRowOffset(aTS)
+	rowOffset := a.calcRowOffset(ts)
 
 	// Read real ts
 	if _, err := b.f.Seek(rowOffset, 0); err != nil {
@@ -200,8 +199,7 @@ func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, 
 	if err := binary.Read(b.f, binary.LittleEndian, &rowTS); err != nil {
 		return nil, err
 	}
-
-	if rowTS != aTS {
+	if rowTS != ts {
 		// value not found in this archive, search in next
 		return nil, nil
 	}
@@ -222,8 +220,11 @@ func (b *BinaryFileStorage) Iterate(archive int, begin, end int64, columns []int
 	}, nil
 }
 
-func (b *BinaryFileStorage) loadValue() (v Value, err error) {
-	v = Value{}
+func (b *BinaryFileStorage) loadValue(ts int64, column int) (v Value, err error) {
+	v = Value{
+		TS:     ts,
+		Column: column,
+	}
 	if err = binary.Read(b.f, binary.LittleEndian, &v.Value); err != nil {
 		return
 	}
@@ -238,44 +239,14 @@ func (b *BinaryFileStorage) loadValue() (v Value, err error) {
 	return
 }
 
-func (b *BinaryFileStorage) writeRow(ts int64, values []float32, rowOffset int64) error {
-	// invalide record when ts changed
-	if err := b.checkAndCleanRow(ts, rowOffset); err != nil {
-		return err
-	}
-	// load old values
-	var prevs []Value
-	for i := 0; i < len(values); i++ {
-		v, _ := b.loadValue()
-		prevs = append(prevs, v)
-	}
-
-	if _, err := b.f.Seek(rowOffset+8, 0); err != nil {
-		return err
-	}
-	for idx, val := range values {
-		v := Value{
-			Valid: true,
-			Value: val,
-		}
-		v = b.columns[idx].Function.Apply(prevs[idx], v)
-		if err := writeValue(b.f, v); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (b *BinaryFileStorage) loadValues(rowOffset int64, rowTS int64, cols []int) ([]Value, error) {
 	var values []Value
 	for _, col := range cols {
 		if _, err := b.f.Seek(rowOffset+8+int64(col*valueSize), 0); err != nil {
 			return nil, err
 		}
-		v, err := b.loadValue()
-		if err == nil {
-			v.TS = rowTS
-		} else {
+		v, err := b.loadValue(rowTS, col)
+		if err != nil {
 			return nil, err
 		}
 		values = append(values, v)
@@ -293,6 +264,9 @@ func (b *BinaryFileStorage) checkAndCleanRow(ts int64, tsOffset int64) error {
 	}
 	if storeTS == ts {
 		return nil
+	}
+	if storeTS > ts {
+		return fmt.Errorf("updating by older value not allowed")
 	}
 	if _, err := b.f.Seek(tsOffset, 0); err != nil {
 		return err
@@ -357,11 +331,10 @@ func (i *BinaryFileIterator) Value(column int) (*Value, error) {
 	if _, err := i.file.f.Seek(valOffset, 0); err != nil {
 		return nil, err
 	}
-	v, err := i.file.loadValue()
+	v, err := i.file.loadValue(i.ts, column)
 	if err != nil {
 		return nil, err
 	}
-	v.TS = i.ts
 	return &v, nil
 }
 
@@ -376,10 +349,9 @@ func (i *BinaryFileIterator) Values() (values []Value, err error) {
 			return nil, err
 		}
 		var v Value
-		if v, err = i.file.loadValue(); err != nil {
+		if v, err = i.file.loadValue(i.ts, col); err != nil {
 			return nil, err
 		}
-		v.TS = i.ts
 		values = append(values, v)
 	}
 	return values, nil
@@ -389,10 +361,6 @@ func (a *bfArchive) calcRowOffset(ts int64) (rowOffset int64) {
 	rowNum := (ts / a.Step) % int64(a.Rows)
 	rowOffset = int64(a.archiveOffset) + a.rowSize*rowNum
 	return
-}
-
-func (a *bfArchive) calcTS(ts int64) int64 {
-	return int64(ts/a.Step) * a.Step
 }
 
 func bfColumnToRRDColumn(cols []bfColumn) (res []RRDColumn) {
