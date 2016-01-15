@@ -28,6 +28,32 @@ func TestRRDArchiveCalcTS(t *testing.T) {
 	}
 }
 
+func TestFuncs(t *testing.T) {
+	data := []struct {
+		f        Function
+		values   []float32
+		expected float32
+	}{
+		{FAverage, []float32{1, 2, 3}, 2},
+		{FAverage, []float32{22}, 22},
+		{FAverage, []float32{10, 5, 0, 5, 25, 15}, 10},
+		{FCount, []float32{22, 32, 32, 12, 213}, 5},
+		{FSum, []float32{10, 5, 0, 5, 25, 15}, 60},
+		{FMinimum, []float32{10, 5, 0, 5, 25, 15}, 0},
+		{FMaximum, []float32{10, 5, 0, 5, 25, 15}, 25},
+		{FLast, []float32{10, 5, 0, 5, 25, 15}, 15},
+	}
+
+	for _, d := range data {
+		res := Value{Valid: true, Value: d.values[0], Counter: 1}
+		for _, v := range d.values[1:] {
+			res = d.f.Apply(res, Value{Valid: true, Value: v})
+		}
+		if res.Value != d.expected {
+			t.Errorf("wrong result for %#v: %v", d, res)
+		}
+	}
+}
 func TestNewRRD(t *testing.T) {
 	r, c, a := createTestDB(t)
 	closeTestDb(t, r)
@@ -72,6 +98,78 @@ func TestNewRRD(t *testing.T) {
 	if err := r2.Close(); err != nil {
 		t.Errorf("OpenRRD close error: %s", err.Error())
 		return
+	}
+}
+
+func TestInfo(t *testing.T) {
+	r, c, a := createTestDB(t)
+	defer closeTestDb(t, r)
+
+	// sample data
+	testV := []int{10, 10, 12, 13, 15, 20, 21, 22, 25, 30, 32,
+		102, 200, 300, 400, 1000, 1200, 1300, 3000, 4000, 5000, 6000,
+		9100, 21000, 25000, 33000}
+	for _, v := range testV {
+		for i := 0; i < 6; i++ {
+			if err := r.Put(int64(v), i, float32(v)); err != nil {
+				t.Errorf("Put error: %s", err.Error())
+			}
+		}
+	}
+
+	info, err := r.Info()
+	if err != nil {
+		t.Errorf("Info error: %s", err.Error())
+		return
+	}
+
+	if info.ArchivesCount != len(a) {
+		t.Logf("dump: %s", r.LowLevelDebugDump())
+		t.Errorf("wrong number of archives: %d, expected %d", info.ArchivesCount, len(a))
+	}
+
+	for i, ar := range a {
+		ia := info.Archives[i]
+		if ia.Name != ar.Name {
+			t.Errorf("wrong archive name: %v, expected %v", ia, ar)
+		}
+		if ia.Rows != int(ar.Rows) {
+			t.Errorf("wrong archive rows: %v, expected %v", ia, ar)
+		}
+		if ia.Step != ar.Step {
+			t.Errorf("wrong archive step: %v, expected %v", ia, ar)
+		}
+		if ia.MaxTS != 33000 {
+			t.Log("dump ", r.LowLevelDebugDump())
+			t.Logf("info %#v", ia)
+			t.Errorf("wrong archive MaxTS: %v, expected 33000", ia.MinTS)
+		}
+
+	}
+	ia := info.Archives[0]
+	if ia.MinTS != 10 {
+		t.Log("dump ", r.LowLevelDebugDump())
+		t.Logf("info %#v", ia)
+		t.Errorf("wrong archive MinTS: %v, expected 10", ia.MinTS)
+	}
+
+	ia = info.Archives[1]
+	if ia.MinTS != 0 {
+		t.Log("dump ", r.LowLevelDebugDump())
+		t.Logf("info %#v", ia)
+		t.Errorf("wrong archive MinTS: %v, expected 10", ia.MinTS)
+	}
+
+	ia = info.Archives[2]
+	if ia.MinTS != 0 {
+		t.Log("dump ", r.LowLevelDebugDump())
+		t.Logf("info %#v", ia)
+		t.Errorf("wrong archive MinTS: %v, expected 10", ia.MinTS)
+	}
+
+	if info.ColumnsCount != len(c) {
+		t.Logf("dump: %s", r.LowLevelDebugDump())
+		t.Errorf("wrong number of columns: %d, expected %d", info.ColumnsCount, len(c))
 	}
 }
 
@@ -349,7 +447,7 @@ func TestPutDataRR3(t *testing.T) {
 }
 
 func TestPutDataRR4(t *testing.T) {
-	// Test upicates
+	// Test dupicates
 	r, _, _ := createTestDB(t)
 	defer closeTestDb(t, r)
 
@@ -393,47 +491,115 @@ func TestPutDataRR4(t *testing.T) {
 }
 
 func TestPutDataFuncs(t *testing.T) {
-	// Test upicates
+	// Test agregations
 	r, _, _ := createTestDB(t)
 	defer closeTestDb(t, r)
 
-	testV := []int{10, 10, 12, 13, 15, 20, 21, 22, 25, 30, 31}
+	testV := []int{10, 10, 12, 13, 15, 20, 21, 22, 25, 30, 32}
 
 	for _, v := range testV {
-		if err := r.Put(int64(v), 0, float32(v)); err != nil {
-			t.Errorf("Put error: %s", err.Error())
-		}
-		if err := r.Put(int64(v), 1, float32(v)); err != nil {
-			t.Errorf("Put error: %s", err.Error())
+		for i := 0; i < 6; i++ {
+			if err := r.Put(int64(v), i, float32(v)); err != nil {
+				t.Errorf("Put error: %s", err.Error())
+			}
 		}
 	}
 
 	expected := [][]int{
-		{10, 15, 12},
-		{20, 25, 22},
-		{30, 31, 31},
+		{10, 15, 12, 60, 10, 15, 5},
+		{20, 25, 22, 88, 20, 25, 4},
+		{30, 32, 31, 62, 30, 32, 2},
 	}
 
 	for _, e := range expected {
 		// last
-		if values, err := r.getFromArchive(0, int64(e[0]), []int{0, 1}); err != nil {
+		if values, err := r.getFromArchive(0, int64(e[0]), []int{0, 1, 2, 3, 4, 5}); err != nil {
 			t.Errorf("Get error: %s", err.Error())
 			t.Logf("dump: %s", r.LowLevelDebugDump())
 		} else {
-			if len(values) != 2 {
-				t.Errorf("Get value - not found %v", e)
+			if len(values) != len(e)-1 {
+				t.Errorf("Get value - not found %v - found: %v", e, values)
 				t.Logf("dump: %s", r.LowLevelDebugDump())
 			} else {
-				v := int(values[0].Value)
-				if v != e[1] {
-					t.Errorf("Get value - wrong value last -  %v, expected %v", v, e[1])
-					t.Logf("dump: %s", r.LowLevelDebugDump())
+				for col, exp := range e[1:] {
+					v := int(values[col].Value)
+					if v != exp {
+						t.Errorf("Get value - wrong value for col %d -  %v, expected %v", col, v, exp)
+						t.Logf("dump: %s", r.LowLevelDebugDump())
+					}
 				}
-				v = int(values[1].Value)
-				if v != e[2] {
-					t.Errorf("Get value - wrong value avg -  %v, expected %v", v, e[2])
-					t.Logf("dump: %s", r.LowLevelDebugDump())
-				}
+			}
+		}
+	}
+}
+
+func TestRange(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+
+	// sample data
+	testV := []int{50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550,
+		600, 650, 700, 750, 800, 850, 900, 950, 1000}
+	for _, v := range testV {
+		if err := r.Put(int64(v), 0, float32(v)); err != nil {
+			t.Errorf("Put error: %s", err.Error())
+		}
+	}
+
+	// get all - should use arch "a1"
+	if vls, err := r.GetRange(0, -1, []int{0}); err != nil {
+		t.Errorf("GetRange error: %s", err.Error())
+	} else {
+		if len(vls) != 17 {
+			t.Log("dump ", r.LowLevelDebugDump())
+			t.Errorf("wrong result len: %v", vls)
+		}
+		exp := [][]int{
+			{0, 50}, {60, 100}, {120, 150}, {180, 200}, {240, 250}, {300, 350},
+			{360, 400}, {420, 450}, {480, 500}, {540, 550}, {600, 650}, {660, 700},
+			{720, 750}, {780, 800}, {840, 850}, {900, 950}, {960, 1000},
+		}
+		for i, e := range exp {
+			ts := vls[i].TS
+			if int(ts) != e[0] {
+				t.Errorf("wrong ts on pos %d: %v - expected %v", i, ts, e[0])
+			}
+			v := vls[i].Values[0]
+			if int(v.Value) != e[1] {
+				t.Errorf("wrong result on pos %d: %v - expected %v", i, v, e[1])
+			}
+			if int(v.ArchiveID) != 1 {
+				t.Errorf("wrong result on pos %d: %v wrong archive - expected %v", i, v, e[1])
+			}
+		}
+	}
+
+	// get last - should use arch "a0"
+	if vls, err := r.GetRange(400, 1000, []int{0}); err != nil {
+		t.Errorf("GetRange error: %s", err.Error())
+	} else {
+		exp := [][]int{
+			{450, 450}, {500, 500}, {550, 550}, {600, 600}, {650, 650},
+			{700, 700}, {750, 750}, {800, 800}, {850, 850}, {900, 900},
+			{950, 950}, {1000, 1000},
+		}
+
+		if len(vls) != len(exp) {
+			t.Log("dump ", r.LowLevelDebugDump())
+			t.Errorf("wrong result len: %v", vls)
+		}
+
+		for i, e := range exp {
+			ts := vls[i].TS
+			if int(ts) != e[0] {
+				t.Errorf("wrong ts on pos %d: %v - expected %v", i, ts, e[0])
+			}
+			v := vls[i].Values[0]
+			if int(v.Value) != e[1] {
+				t.Errorf("wrong result on pos %d: %v - expected %v", i, v, e[1])
+			}
+			if int(v.ArchiveID) != 0 {
+				t.Errorf("wrong result on pos %d: %v wrong archive - expected 0", i, v)
 			}
 		}
 	}
@@ -443,11 +609,15 @@ func createTestDB(t *testing.T) (*RRD, []RRDColumn, []RRDArchive) {
 	c := []RRDColumn{
 		RRDColumn{"col1", FLast},
 		RRDColumn{"col2", FAverage},
+		RRDColumn{"col3", FSum},
+		RRDColumn{"col4", FMinimum},
+		RRDColumn{"col5", FMaximum},
+		RRDColumn{"col6", FCount},
 	}
 	a := []RRDArchive{
-		RRDArchive{"a1", 10, 60},
-		RRDArchive{"a2", 60, 300},
-		RRDArchive{"a3", 300, 1800},
+		RRDArchive{"a0", 10, 60},
+		RRDArchive{"a1", 60, 300},
+		RRDArchive{"a2", 300, 1800},
 	}
 	r, err := NewRRD("tmp.rdb", c, a)
 	if err != nil {

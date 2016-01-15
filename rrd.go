@@ -77,13 +77,14 @@ type (
 
 	// RRDArchiveInfo keeps information about archive
 	RRDArchiveInfo struct {
-		Name     string
-		Rows     int
-		Step     int64
-		UsedRows int
-		MinTS    int64
-		MaxTS    int64
-		Values   int64
+		Name         string
+		Rows         int
+		Step         int64
+		UsedRows     int
+		MinTS        int64
+		MaxTS        int64
+		Values       int64
+		DataRangeMin int64
 	}
 )
 
@@ -182,8 +183,11 @@ func (r *RRD) PutValues(values ...Value) error {
 				updatedVal = append(updatedVal, uv)
 			}
 		} else {
-			for _, v := range values {
+			for col, v := range values {
 				v.Counter = 1
+				if r.columns[col].Function == FCount {
+					v.Value = 1
+				}
 				updatedVal = append(updatedVal, v)
 			}
 		}
@@ -250,22 +254,9 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int) (Rows, error) {
 		columns = r.allColumnsIDs()
 	}
 
-	last, err := r.Last()
-	if err != nil {
-		return nil, err
-	}
-	var archiveID int
-	var aMinTS int64
-	for aID, a := range r.archives {
-		archiveID = aID
-		// archive range
-		aMinTS = a.calcTS(last - int64(a.Rows)*a.Step)
-		if minTS >= aMinTS {
-			break
-		}
-	}
+	archiveID, aMinTS, aMaxTS := r.findArchiveForRange(minTS, maxTS)
 
-	i, err := r.storage.Iterate(archiveID, aMinTS, maxTS, columns)
+	i, err := r.storage.Iterate(archiveID, aMinTS, aMaxTS, columns)
 	if err != nil {
 		return nil, err
 	}
@@ -288,6 +279,23 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int) (Rows, error) {
 
 	sort.Sort(rows)
 	return rows, err
+}
+
+func (r *RRD) findArchiveForRange(minTS, maxTS int64) (archiveID int, aMinTS, aMaxTS int64) {
+	last, err := r.Last()
+	if err != nil {
+		return 0, 0, -1
+	}
+	for aID, a := range r.archives {
+		archiveID = aID
+		// archive range
+		aMinTS = a.calcTS(last - int64(a.Rows)*a.Step)
+		if minTS >= aMinTS {
+			aMaxTS = a.calcTS(maxTS)
+			break
+		}
+	}
+	return
 }
 
 func (r *RRD) allColumnsIDs() (cols []int) {
@@ -318,9 +326,10 @@ func (r *RRD) Info() (*RRDFileInfo, error) {
 
 func (r *RRD) infoArchive(aID int, a RRDArchive) (RRDArchiveInfo, error) {
 	arch := RRDArchiveInfo{
-		Name: a.Name,
-		Rows: int(a.Rows),
-		Step: a.Step,
+		Name:  a.Name,
+		Rows:  int(a.Rows),
+		Step:  a.Step,
+		MinTS: -1,
 	}
 	// Count rows & Values
 	iter, err := r.storage.Iterate(aID, 0, -1, r.allColumnsIDs())
@@ -336,7 +345,7 @@ func (r *RRD) infoArchive(aID int, a RRDArchive) (RRDArchiveInfo, error) {
 		}
 		arch.UsedRows++
 		ts := iter.TS()
-		if ts < arch.MinTS || arch.MinTS == 0 {
+		if ts < arch.MinTS || arch.MinTS == -1 {
 			arch.MinTS = ts
 		}
 		if ts > arch.MaxTS {
@@ -351,7 +360,7 @@ func (r *RRD) infoArchive(aID int, a RRDArchive) (RRDArchiveInfo, error) {
 				arch.Values++
 			}
 		}
-
+		arch.DataRangeMin = a.calcTS(arch.MaxTS - int64(a.Rows)*a.Step)
 	}
 	return arch, nil
 }
@@ -366,19 +375,25 @@ func (r *RRD) LowLevelDebugDump() string {
 	for aID, a := range r.archives {
 		res = append(res, fmt.Sprintf("Archives: %d -  %3v", aID, a))
 		iter, _ := r.storage.Iterate(aID, 0, -1, r.allColumnsIDs())
+		var maxTS int64
 		for {
 			err := iter.Next()
 			if err == io.EOF {
 				break
 			}
-			row := fmt.Sprintf("  %d ", iter.TS())
+			row := fmt.Sprintf("  - %d ", iter.TS())
 
 			values, _ := iter.Values()
 			for _, value := range values {
 				row += value.String() + ", "
 			}
+			if iter.TS() > maxTS {
+				maxTS = iter.TS()
+			}
 			res = append(res, row)
 		}
+		res = append(res, fmt.Sprintf("  TS range: %d - %d", a.calcTS(maxTS-int64(a.Rows)*a.Step), maxTS))
+
 	}
 	return strings.Join(res, "\n")
 }

@@ -34,10 +34,17 @@ func (f Function) String() string {
 
 // Apply functions to previous and new value; return processed Value.
 func (f Function) Apply(v1, v2 Value) Value {
-	if !v1.Valid {
-		return v2
-	}
 	v := Value(v2)
+	v.Counter = 1
+	if !v1.Valid {
+		if f == FCount {
+			v.Value = float32(v.Counter)
+		}
+		return v
+	}
+	if v1.Counter == 0 {
+		v1.Counter = 1
+	}
 	v.Counter = v1.Counter + 1
 	switch f {
 	case FAverage:
@@ -53,7 +60,7 @@ func (f Function) Apply(v1, v2 Value) Value {
 			v.Value = v1.Value
 		}
 	case FCount:
-		v.Value = v1.Value + 1
+		v.Value = float32(v.Counter)
 	case FLast:
 	}
 	return v

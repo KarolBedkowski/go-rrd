@@ -204,7 +204,7 @@ func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, 
 		return nil, nil
 	}
 	//fmt.Printf("Getting from %s - %d, %v\n", a.Name, rowOffset, cols)
-	return b.loadValues(rowOffset, rowTS, columns)
+	return b.loadValues(rowOffset, rowTS, columns, archive)
 }
 
 // Iterate create iterator for archive
@@ -220,10 +220,11 @@ func (b *BinaryFileStorage) Iterate(archive int, begin, end int64, columns []int
 	}, nil
 }
 
-func (b *BinaryFileStorage) loadValue(ts int64, column int) (v Value, err error) {
+func (b *BinaryFileStorage) loadValue(ts int64, column, archive int) (v Value, err error) {
 	v = Value{
-		TS:     ts,
-		Column: column,
+		TS:        ts,
+		Column:    column,
+		ArchiveID: archive,
 	}
 	if err = binary.Read(b.f, binary.LittleEndian, &v.Value); err != nil {
 		return
@@ -239,13 +240,13 @@ func (b *BinaryFileStorage) loadValue(ts int64, column int) (v Value, err error)
 	return
 }
 
-func (b *BinaryFileStorage) loadValues(rowOffset int64, rowTS int64, cols []int) ([]Value, error) {
+func (b *BinaryFileStorage) loadValues(rowOffset int64, rowTS int64, cols []int, archive int) ([]Value, error) {
 	var values []Value
 	for _, col := range cols {
 		if _, err := b.f.Seek(rowOffset+8+int64(col*valueSize), 0); err != nil {
 			return nil, err
 		}
-		v, err := b.loadValue(rowTS, col)
+		v, err := b.loadValue(rowTS, col, archive)
 		if err != nil {
 			return nil, err
 		}
@@ -331,7 +332,7 @@ func (i *BinaryFileIterator) Value(column int) (*Value, error) {
 	if _, err := i.file.f.Seek(valOffset, 0); err != nil {
 		return nil, err
 	}
-	v, err := i.file.loadValue(i.ts, column)
+	v, err := i.file.loadValue(i.ts, column, i.archive)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +350,7 @@ func (i *BinaryFileIterator) Values() (values []Value, err error) {
 			return nil, err
 		}
 		var v Value
-		if v, err = i.file.loadValue(i.ts, col); err != nil {
+		if v, err = i.file.loadValue(i.ts, col, i.archive); err != nil {
 			return nil, err
 		}
 		values = append(values, v)
