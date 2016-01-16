@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -106,15 +107,12 @@ func TestInfo(t *testing.T) {
 	defer closeTestDb(t, r)
 
 	// sample data
-	testV := []int{10, 10, 12, 13, 15, 20, 21, 22, 25, 30, 32,
+	testV := []int{1, 10, 10, 12, 13, 15, 20, 21, 22, 25, 30, 32,
 		102, 200, 300, 400, 1000, 1200, 1300, 3000, 4000, 5000, 6000,
 		9100, 21000, 25000, 33000}
-	for _, v := range testV {
-		for i := 0; i < 6; i++ {
-			if err := r.Put(int64(v), i, float32(v)); err != nil {
-				t.Errorf("Put error: %s", err.Error())
-			}
-		}
+	if errors := putTestDataInts(r, testV, 0, 1, 2, 3, 4, 5); len(errors) > 0 {
+		t.Errorf("Put data error: %v", errors)
+		return
 	}
 
 	info, err := r.Info()
@@ -124,8 +122,9 @@ func TestInfo(t *testing.T) {
 	}
 
 	if info.ArchivesCount != len(a) {
-		t.Logf("dump: %s", r.LowLevelDebugDump())
 		t.Errorf("wrong number of archives: %d, expected %d", info.ArchivesCount, len(a))
+		t.Logf("dump: %s", r.LowLevelDebugDump())
+		return
 	}
 
 	for i, ar := range a {
@@ -140,36 +139,34 @@ func TestInfo(t *testing.T) {
 			t.Errorf("wrong archive step: %v, expected %v", ia, ar)
 		}
 		if ia.MaxTS != 33000 {
+			t.Errorf("wrong archive MaxTS: %v, expected 33000", ia.MinTS)
 			t.Log("dump ", r.LowLevelDebugDump())
 			t.Logf("info %#v", ia)
-			t.Errorf("wrong archive MaxTS: %v, expected 33000", ia.MinTS)
 		}
 
 	}
 	ia := info.Archives[0]
-	if ia.MinTS != 10 {
+	if ia.MinTS != 13 {
 		t.Log("dump ", r.LowLevelDebugDump())
-		t.Logf("info %#v", ia)
-		t.Errorf("wrong archive MinTS: %v, expected 10", ia.MinTS)
+		t.Errorf("wrong archive MinTS: %v, expected 13", ia.MinTS)
 	}
 
 	ia = info.Archives[1]
-	if ia.MinTS != 0 {
-		t.Log("dump ", r.LowLevelDebugDump())
-		t.Logf("info %#v", ia)
+	if ia.MinTS != 10 {
 		t.Errorf("wrong archive MinTS: %v, expected 10", ia.MinTS)
+		t.Log("dump ", r.LowLevelDebugDump())
 	}
 
 	ia = info.Archives[2]
-	if ia.MinTS != 0 {
+	if ia.MinTS != 400 {
+		t.Errorf("wrong archive MinTS: %v, expected 400", ia.MinTS)
 		t.Log("dump ", r.LowLevelDebugDump())
 		t.Logf("info %#v", ia)
-		t.Errorf("wrong archive MinTS: %v, expected 10", ia.MinTS)
 	}
 
 	if info.ColumnsCount != len(c) {
-		t.Logf("dump: %s", r.LowLevelDebugDump())
 		t.Errorf("wrong number of columns: %d, expected %d", info.ColumnsCount, len(c))
+		t.Logf("dump: %s", r.LowLevelDebugDump())
 	}
 }
 
@@ -201,16 +198,9 @@ func TestPutData(t *testing.T) {
 		if len(values) != 1 {
 			t.Errorf("Get error: wrong number of values %#v", values)
 		} else {
-			val := values[0]
-			if val.Value != 100.0 {
-				t.Errorf("Get error - wrong value; %v != 100.0", val.Value)
-			}
-			if val.TS != 10 {
+			for _, err := range checkValue(values[0], float32(100.0), int64(10), true, 0, 0) {
+				t.Error(err)
 				t.Logf("dump: %s", r.LowLevelDebugDump())
-				t.Errorf("Get error - wrong value.TS ; %v != 10", val.TS)
-			}
-			if !val.Valid {
-				t.Errorf("Get error - value not valid")
 			}
 		}
 	}
@@ -289,95 +279,95 @@ func TestPutDataRR1(t *testing.T) {
 	defer closeTestDb(t, r)
 	// update value
 
-	for i := 0; i < 600; i = i + 10 {
+	for i := 0; i < 600; i++ {
 		if err := r.Put(int64(i), 0, float32(i)); err != nil {
 			t.Errorf("Put error: %s", err.Error())
 		}
 	}
 
 	if last, err := r.Last(); err == nil {
-		if last != 590 {
-			ainfo, _ := r.Info()
-			t.Logf("info: %#v\n", ainfo)
-			t.Logf("dump: %s", r.LowLevelDebugDump())
+		if last != 599 {
 			t.Errorf("Last value wrong val, last=%d, expected 590", last)
+			t.Logf("dump: %s", r.LowLevelDebugDump())
 		}
 	} else {
 		t.Errorf("Last get error: %s", err.Error())
 	}
 
-	for i := 0; i < 600; i = i + 10 {
-		if values, err := r.Get(int64(i), 0); err != nil {
-			ainfo, _ := r.Info()
-			t.Logf("info: %#v\n", ainfo)
+	// check archive 0 - 10 rows step 1
+	// this shouldn't be found in archive 0
+	for i := 0; i < 581; i++ {
+		if values, err := r.getFromArchive(0, int64(i), []int{0}); len(values) > 0 {
+			t.Errorf("found value in archive 0 that shouldn't exists: %d, %#v, %s", i, values, err)
+			t.Logf("dump: %s", r.LowLevelDebugDump())
+		}
+	}
+	for i := 590; i < 600; i++ {
+		if values, err := r.getFromArchive(0, int64(i), []int{0}); err != nil {
 			t.Errorf("Get error: %s", err.Error())
+			t.Logf("dump: %s", r.LowLevelDebugDump())
 		} else {
 			if len(values) != 1 {
 				t.Errorf("Get error: wrong number of values %#v", values)
 			} else {
 				val := values[0]
-				if int(val.Value) != i {
-					t.Errorf("Get error - wrong value; %v != %v", val.Value, i)
-				}
-				if val.TS != int64(i) {
+
+				for _, err := range checkValue(val, float32(i), int64(i), true, 0, 0) {
+					t.Error(err)
 					t.Logf("dump: %s", r.LowLevelDebugDump())
-					t.Errorf("Get error - wrong value.TS ; %v != %d", val.TS, i)
-				}
-				if !val.Valid {
-					t.Errorf("Get error - value not valid")
 				}
 			}
 		}
 	}
 
-}
-
-func TestPutDataRR2(t *testing.T) {
-	r, _, _ := createTestDB(t)
-	defer closeTestDb(t, r)
-	// update value
-
-	for i := 0; i < 600; i = i + 1 {
-		if err := r.Put(int64(i), 0, float32(i)); err != nil {
-			t.Errorf("Put error: %s", err.Error())
-		}
-	}
-
-	if last, err := r.Last(); err == nil {
-		if last != 590 {
-			ainfo, _ := r.Info()
-			t.Logf("info: %#v\n", ainfo)
+	// check archive 1 - 10 rows, step 10
+	// this shouldn't be found in archive 0
+	for i := 0; i < 500; i++ {
+		if values, err := r.getFromArchive(1, int64(i), []int{0}); len(values) > 0 {
+			t.Errorf("found value in archive 1 that shouldn't exists: %d, %#v, %s", i, values, err)
 			t.Logf("dump: %s", r.LowLevelDebugDump())
-			t.Errorf("Last value wrong val, last=%d, expected 590", last)
 		}
-	} else {
-		t.Errorf("Last get error: %s", err.Error())
 	}
-
-	for i := 0; i < 600; i = i + 10 {
-		if values, err := r.Get(int64(i), 0); err != nil {
-			ainfo, _ := r.Info()
-			t.Logf("info: %#v\n", ainfo)
+	for i := 500; i < 600; i = i + 10 {
+		if values, err := r.getFromArchive(1, int64(i), []int{0}); err != nil {
 			t.Errorf("Get error: %s", err.Error())
+			t.Logf("dump: %s", r.LowLevelDebugDump())
 		} else {
 			if len(values) != 1 {
-				t.Errorf("Get error: wrong number of values %#v", values)
+				t.Errorf("Get error: wrong number of values for %d: %#v", i, values)
+				t.Logf("dump: %s", r.LowLevelDebugDump())
 			} else {
 				val := values[0]
 				exp := i + 9
-				if int(val.Value) != exp {
-					t.Errorf("Get error - wrong value; %v != %v", val.Value, exp)
-				}
-				if val.TS != int64(i) {
+				for _, err := range checkValue(val, float32(exp), int64(i), true, -1, -1) {
+					t.Error(err)
 					t.Logf("dump: %s", r.LowLevelDebugDump())
-					t.Errorf("Get error - wrong value.TS ; %v != %d", val.TS, i)
-				}
-				if !val.Valid {
-					t.Errorf("Get error - value not valid")
 				}
 			}
 		}
 	}
+
+	// check archive 2 - 10 rows, step 100
+	// this shouldn't be found in archive 0
+	for i := 0; i < 600; i = i + 100 {
+		if values, err := r.getFromArchive(2, int64(i), []int{0}); err != nil {
+			t.Errorf("Get error: %s", err.Error())
+			t.Logf("dump: %s", r.LowLevelDebugDump())
+		} else {
+			if len(values) != 1 {
+				t.Errorf("Get error: wrong number of values for %d: %#v", i, values)
+				t.Logf("dump: %s", r.LowLevelDebugDump())
+			} else {
+				val := values[0]
+				exp := i + 99
+				for _, err := range checkValue(val, float32(exp), int64(i), true, -1, -1) {
+					t.Error(err)
+					t.Logf("dump: %s", r.LowLevelDebugDump())
+				}
+			}
+		}
+	}
+
 }
 
 func TestPutDataRR3(t *testing.T) {
@@ -385,60 +375,53 @@ func TestPutDataRR3(t *testing.T) {
 	defer closeTestDb(t, r)
 
 	testV := []int{
-		10,   // row 1 - replaced by 610
-		30,   // row 3
-		100,  // row 10 - replaced by 700
-		500,  // row 50 - replaced by 1100
-		610,  // row 1
-		200,  // row 20 - replaced by 800
-		300,  // row 30
-		700,  // row 10
-		800,  // row 20
-		1000, // row 40 -
-		1100, // row 50
-		1200, // row 0
+		1,  // row 1 - replaced by 11
+		3,  // row 3 - replaced by 13
+		5,  // row 5
+		10, // row 0 - replaced by 20
+		11, // row 1
+		12, // row 2
+		13, // row 3
+		14, // row 4 - replaced by 54
+		20, // row 0
+		38, // row 8
+		54, // row 4
+		8,  // row 9 but skipped
+		44, // row 4 but skipped
 	}
 
 	missing := map[int]bool{
-		10:  true,
-		100: true,
-		500: true,
-		200: true,
+		1:  true,
+		3:  true,
+		10: true,
+		14: true,
+		8:  true,
+		44: true,
 	}
 
 	for _, v := range testV {
-		if err := r.Put(int64(v), 0, float32(v)); err != nil {
-			t.Errorf("Put error: %s", err.Error())
-		}
+		r.Put(int64(v), 0, float32(v))
 	}
 
 	for _, v := range testV {
 		if values, err := r.getFromArchive(0, int64(v), []int{0}); err != nil {
-			ainfo, _ := r.Info()
-			t.Logf("info: %#v\n", ainfo)
 			t.Errorf("Get error: %s", err.Error())
+			t.Logf("dump: %s", r.LowLevelDebugDump())
 		} else {
 			if values == nil || len(values) != 1 {
 				if _, ok := missing[v]; !ok {
-					t.Logf("dump: %s", r.LowLevelDebugDump())
 					t.Errorf("Get error: wrong number of values for %v - %#v", v, values)
+					t.Logf("dump: %s", r.LowLevelDebugDump())
 				}
 			} else {
 				if _, ok := missing[v]; ok {
-					t.Logf("dump: %s", r.LowLevelDebugDump())
 					t.Errorf("Get error: values for %v shouldn't exist -  %#v", v, values)
-				}
-				val := values[0]
-				exp := v
-				if int(val.Value) != exp {
-					t.Errorf("Get error - wrong value; %v != %v", val.Value, exp)
-				}
-				if val.TS != int64(v) {
 					t.Logf("dump: %s", r.LowLevelDebugDump())
-					t.Errorf("Get error - wrong value.TS ; %v != %d", val.TS, v)
+					continue
 				}
-				if !val.Valid {
-					t.Errorf("Get error - value not valid")
+				for _, err := range checkValue(values[0], float32(v), int64(v), true, 0, 0) {
+					t.Error(err)
+					t.Logf("dump: %s", r.LowLevelDebugDump())
 				}
 			}
 		}
@@ -495,23 +478,28 @@ func TestPutDataFuncs(t *testing.T) {
 	r, _, _ := createTestDB(t)
 	defer closeTestDb(t, r)
 
-	testV := []int{10, 10, 12, 13, 15, 20, 21, 22, 25, 30, 32}
+	testV := [][]int{
+		{1, 1}, {1, 3}, {1, 0}, {1, 4},
+		{2, 2}, {2, 6},
+		{5, 5}, {5, 1},
+	}
 
 	for _, v := range testV {
 		for i := 0; i < 6; i++ {
-			if err := r.Put(int64(v), i, float32(v)); err != nil {
+			if err := r.Put(int64(v[0]), i, float32(v[1])); err != nil {
 				t.Errorf("Put error: %s", err.Error())
+				return
 			}
 		}
 	}
 
 	expected := [][]int{
-		{10, 15, 12, 60, 10, 15, 5},
-		{20, 25, 22, 88, 20, 25, 4},
-		{30, 32, 31, 62, 30, 32, 2},
+		{1, 4, 2, 8, 0, 4, 4},
+		{2, 6, 4, 8, 2, 6, 2},
+		{5, 1, 3, 6, 1, 5, 2},
 	}
 
-	for _, e := range expected {
+	for row, e := range expected {
 		// last
 		if values, err := r.getFromArchive(0, int64(e[0]), []int{0, 1, 2, 3, 4, 5}); err != nil {
 			t.Errorf("Get error: %s", err.Error())
@@ -524,7 +512,7 @@ func TestPutDataFuncs(t *testing.T) {
 				for col, exp := range e[1:] {
 					v := int(values[col].Value)
 					if v != exp {
-						t.Errorf("Get value - wrong value for col %d -  %v, expected %v", col, v, exp)
+						t.Errorf("Get value - wrong value for col %d -  %v, expected %v in row %d", col, v, exp, row)
 						t.Logf("dump: %s", r.LowLevelDebugDump())
 					}
 				}
@@ -538,23 +526,22 @@ func TestRangeFindArchive(t *testing.T) {
 	defer closeTestDb(t, r)
 
 	// sample data
-	testV := []int{50, 100, 250, 500, 1000, 2000, 5000, 10000, 20000, 40000, 50000,
-		60010, 60100, 60500}
-	for _, v := range testV {
-		if err := r.Put(int64(v), 0, float32(v)); err != nil {
-			t.Errorf("Put error: %s", err.Error())
-		}
+	testV := []int{1, 5, 10, 20, 100, 150, 200, 250, 300, 400, 450, 490, 495, 500}
+
+	if errors := putTestDataInts(r, testV, 0); len(errors) > 0 {
+		t.Errorf("Put data error: %v", errors)
+		return
 	}
 
-	if aID, min, max := r.findArchiveForRange(0, 70000); aID != 2 || min != 0 || max != 70000 {
+	if aID, min, max := r.findArchiveForRange(0, 8000); aID != 2 || min != 0 || max != 8000 {
 		t.Errorf("wrong archive; expected 2: %d, min=%d, max=%d", aID, min, max)
 	}
 
-	if aID, min, max := r.findArchiveForRange(50000, 60400); aID != 1 || min != 49980 || max != 60400 {
+	if aID, min, max := r.findArchiveForRange(420, 500); aID != 1 || min != 420 || max != 500 {
 		t.Errorf("wrong archive; expected 1: %d, min=%d, max=%d", aID, min, max)
 	}
 
-	if aID, min, max := r.findArchiveForRange(60000, 60400); aID != 0 || min != 60000 || max != 60400 {
+	if aID, min, max := r.findArchiveForRange(491, 500); aID != 0 || min != 491 || max != 500 {
 		t.Errorf("wrong archive; expected 0: %d, min=%d, max=%d", aID, min, max)
 	}
 }
@@ -564,109 +551,45 @@ func TestRange(t *testing.T) {
 	defer closeTestDb(t, r)
 
 	// sample data
-	testV := []int{50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550,
-		600, 650, 700, 750, 800, 850, 900, 950, 1000}
-	for _, v := range testV {
-		if err := r.Put(int64(v), 0, float32(v)); err != nil {
-			t.Errorf("Put error: %s", err.Error())
-		}
+	testV := []int{1, 5, 10, 20, 100, 150, 200, 250, 300, 400, 450, 490, 495, 500}
+	if errors := putTestDataInts(r, testV, 0); len(errors) > 0 {
+		t.Errorf("Put data error: %v", errors)
+		return
 	}
 
-	// get all - should use arch "a1"
+	// get all - should use arch "a2"
 	if vls, err := r.GetRange(0, -1, []int{0}); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
-		if len(vls) != 17 {
-			t.Log("dump ", r.LowLevelDebugDump())
+		exp := [][]int{{0, 20}, {100, 150}, {200, 250}, {300, 300}, {400, 495}, {500, 500}}
+		if len(vls) != len(exp) {
 			t.Errorf("wrong result len: %v", vls)
-		}
-		exp := [][]int{
-			{0, 50}, {60, 100}, {120, 150}, {180, 200}, {240, 250}, {300, 350},
-			{360, 400}, {420, 450}, {480, 500}, {540, 550}, {600, 650}, {660, 700},
-			{720, 750}, {780, 800}, {840, 850}, {900, 950}, {960, 1000},
+			t.Log("dump ", r.LowLevelDebugDump())
 		}
 		for i, e := range exp {
-			ts := vls[i].TS
-			if int(ts) != e[0] {
-				t.Errorf("wrong ts on pos %d: %v - expected %v", i, ts, e[0])
-			}
 			v := vls[i].Values[0]
-			if int(v.Value) != e[1] {
-				t.Errorf("wrong result on pos %d: %v - expected %v", i, v, e[1])
-			}
-			if int(v.ArchiveID) != 1 {
-				t.Errorf("wrong result on pos %d: %v wrong archive - expected %v", i, v, e[1])
+			for _, err := range checkValue(v, float32(e[1]), int64(e[0]), true, 2, 0) {
+				t.Error(err)
+				t.Logf("dump: %s", r.LowLevelDebugDump())
 			}
 		}
 	}
 
 	// get last - should use arch "a0"
-	if vls, err := r.GetRange(400, 1000, []int{0}); err != nil {
+	if vls, err := r.GetRange(491, 500, []int{0}); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
-		exp := [][]int{
-			{450, 450}, {500, 500}, {550, 550}, {600, 600}, {650, 650},
-			{700, 700}, {750, 750}, {800, 800}, {850, 850}, {900, 900},
-			{950, 950}, {1000, 1000},
-		}
+		exp := [][]int{{495, 495}, {500, 500}}
 
 		if len(vls) != len(exp) {
-			t.Log("dump ", r.LowLevelDebugDump())
 			t.Errorf("wrong result len: %v", vls)
-		}
-
-		for i, e := range exp {
-			ts := vls[i].TS
-			if int(ts) != e[0] {
-				t.Errorf("wrong ts on pos %d: %v - expected %v", i, ts, e[0])
-			}
-			v := vls[i].Values[0]
-			if int(v.Value) != e[1] {
-				t.Errorf("wrong result on pos %d: %v - expected %v", i, v, e[1])
-			}
-			if int(v.ArchiveID) != 0 {
-				t.Errorf("wrong result on pos %d: %v wrong archive - expected 0", i, v)
-			}
-		}
-	}
-}
-
-func TestRange2(t *testing.T) {
-	r, _, _ := createTestDB(t)
-	defer closeTestDb(t, r)
-
-	// sample data
-	testV := []int{50, 100, 150, 400, 450, 500, 600, 850, 900, 950, 1000}
-	for _, v := range testV {
-		if err := r.Put(int64(v), 0, float32(v)); err != nil {
-			t.Errorf("Put error: %s", err.Error())
-		}
-	}
-
-	// get last - should use arch "a0"
-	if vls, err := r.GetRange(800, 980, []int{0}); err != nil {
-		t.Errorf("GetRange error: %s", err.Error())
-	} else {
-		exp := [][]int{
-			{850, 850}, {900, 900}, {950, 950},
-		}
-
-		if len(vls) != len(exp) {
 			t.Log("dump ", r.LowLevelDebugDump())
-			t.Errorf("wrong result len: %v", vls)
 		}
-
 		for i, e := range exp {
-			ts := vls[i].TS
-			if int(ts) != e[0] {
-				t.Errorf("wrong ts on pos %d: %v - expected %v", i, ts, e[0])
-			}
 			v := vls[i].Values[0]
-			if int(v.Value) != e[1] {
-				t.Errorf("wrong result on pos %d: %v - expected %v", i, v, e[1])
-			}
-			if int(v.ArchiveID) != 0 {
-				t.Errorf("wrong result on pos %d: %v wrong archive - expected 0", i, v)
+			for _, err := range checkValue(v, float32(e[1]), int64(e[0]), true, 0, 0) {
+				t.Error(err)
+				t.Logf("dump: %s", r.LowLevelDebugDump())
 			}
 		}
 	}
@@ -682,9 +605,9 @@ func createTestDB(t *testing.T) (*RRD, []RRDColumn, []RRDArchive) {
 		RRDColumn{"col6", FCount},
 	}
 	a := []RRDArchive{
-		RRDArchive{"a0", 10, 60},
-		RRDArchive{"a1", 60, 300},
-		RRDArchive{"a2", 300, 1800},
+		RRDArchive{Name: "a0", Step: 1, Rows: 10},
+		RRDArchive{Name: "a1", Step: 10, Rows: 10},
+		RRDArchive{Name: "a2", Step: 100, Rows: 10},
 	}
 	r, err := NewRRD("tmp.rdb", c, a)
 	if err != nil {
@@ -703,4 +626,40 @@ func closeTestDb(t *testing.T, r *RRD) {
 	if err != nil {
 		t.Errorf("NewRRD close error: %s", err.Error())
 	}
+}
+
+func checkValue(v Value, eValue float32, eTS int64, eValid bool, eArchive int, eColumn int) (errors []string) {
+	if v.Value != eValue {
+		errors = append(errors,
+			fmt.Sprintf("wrong value: %v (expected %v) %v", v.Value, eValue, v))
+	}
+	if v.TS >= -1 && v.TS != eTS {
+		errors = append(errors,
+			fmt.Sprintf("wrong ts: %v (expected %d) in %v", v.TS, eTS, v))
+	}
+	if v.Valid != eValid {
+		errors = append(errors,
+			fmt.Sprintf("wrong valid: %v (expected %v) in %v", v.Valid, eValid, v))
+	}
+	if eArchive >= 0 && v.ArchiveID != eArchive {
+		errors = append(errors,
+			fmt.Sprintf("wrong archive: %v (expected %v) in %v", v.ArchiveID, eArchive, v))
+	}
+	if eColumn >= 0 && v.Column != eColumn {
+		errors = append(errors,
+			fmt.Sprintf("wrong column: %v (expected %v) in %v", v.Column, eColumn, v))
+	}
+
+	return errors
+}
+
+func putTestDataInts(r *RRD, values []int, cols ...int) (errors []string) {
+	for _, v := range values {
+		for _, col := range cols {
+			if err := r.Put(int64(v), col, float32(v)); err != nil {
+				errors = append(errors, fmt.Sprintf("on %v:%d -> %s", v, col, err.Error()))
+			}
+		}
+	}
+	return
 }

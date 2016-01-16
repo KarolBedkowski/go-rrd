@@ -375,7 +375,7 @@ func (r *RRD) LowLevelDebugDump() string {
 	res = append(res, fmt.Sprintf("Columns: %#v", r.columns))
 	res = append(res, fmt.Sprintf("ArchivesCount: %d", len(r.archives)))
 	for aID, a := range r.archives {
-		res = append(res, fmt.Sprintf("Archives: %d -  %3v", aID, a))
+		res = append(res, fmt.Sprintf("Archives: %d -  %#v", aID, a))
 		iter, _ := r.storage.Iterate(aID, 0, -1, r.allColumnsIDs())
 		var maxTS int64
 		for {
@@ -387,7 +387,11 @@ func (r *RRD) LowLevelDebugDump() string {
 
 			values, _ := iter.Values()
 			for _, value := range values {
-				row += value.String() + ", "
+				if value.Valid {
+					row += value.String() + ", "
+				} else {
+					row += ", "
+				}
 			}
 			if iter.TS() > maxTS {
 				maxTS = iter.TS()
