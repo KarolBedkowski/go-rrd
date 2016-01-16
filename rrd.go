@@ -289,9 +289,11 @@ func (r *RRD) findArchiveForRange(minTS, maxTS int64) (archiveID int, aMinTS, aM
 	for aID, a := range r.archives {
 		archiveID = aID
 		// archive range
-		aMinTS = a.calcTS(last - int64(a.Rows)*a.Step)
-		if minTS >= aMinTS {
-			aMaxTS = a.calcTS(maxTS)
+		aOldestTS := a.calcTS(last - int64(a.Rows)*a.Step)
+		//fmt.Printf("arch=%d, aOldestTS=%d, minTS=%d, last=%d\n", archiveID, aOldestTS, minTS, last)
+		if minTS >= aOldestTS {
+			aMinTS = a.calcTS(minTS)
+			aMaxTS = maxTS // check
 			break
 		}
 	}

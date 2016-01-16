@@ -533,6 +533,32 @@ func TestPutDataFuncs(t *testing.T) {
 	}
 }
 
+func TestRangeFindArchive(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+
+	// sample data
+	testV := []int{50, 100, 250, 500, 1000, 2000, 5000, 10000, 20000, 40000, 50000,
+		60010, 60100, 60500}
+	for _, v := range testV {
+		if err := r.Put(int64(v), 0, float32(v)); err != nil {
+			t.Errorf("Put error: %s", err.Error())
+		}
+	}
+
+	if aID, min, max := r.findArchiveForRange(0, 70000); aID != 2 || min != 0 || max != 70000 {
+		t.Errorf("wrong archive; expected 2: %d, min=%d, max=%d", aID, min, max)
+	}
+
+	if aID, min, max := r.findArchiveForRange(50000, 60400); aID != 1 || min != 49980 || max != 60400 {
+		t.Errorf("wrong archive; expected 1: %d, min=%d, max=%d", aID, min, max)
+	}
+
+	if aID, min, max := r.findArchiveForRange(60000, 60400); aID != 0 || min != 60000 || max != 60400 {
+		t.Errorf("wrong archive; expected 0: %d, min=%d, max=%d", aID, min, max)
+	}
+}
+
 func TestRange(t *testing.T) {
 	r, _, _ := createTestDB(t)
 	defer closeTestDb(t, r)
@@ -582,6 +608,47 @@ func TestRange(t *testing.T) {
 			{450, 450}, {500, 500}, {550, 550}, {600, 600}, {650, 650},
 			{700, 700}, {750, 750}, {800, 800}, {850, 850}, {900, 900},
 			{950, 950}, {1000, 1000},
+		}
+
+		if len(vls) != len(exp) {
+			t.Log("dump ", r.LowLevelDebugDump())
+			t.Errorf("wrong result len: %v", vls)
+		}
+
+		for i, e := range exp {
+			ts := vls[i].TS
+			if int(ts) != e[0] {
+				t.Errorf("wrong ts on pos %d: %v - expected %v", i, ts, e[0])
+			}
+			v := vls[i].Values[0]
+			if int(v.Value) != e[1] {
+				t.Errorf("wrong result on pos %d: %v - expected %v", i, v, e[1])
+			}
+			if int(v.ArchiveID) != 0 {
+				t.Errorf("wrong result on pos %d: %v wrong archive - expected 0", i, v)
+			}
+		}
+	}
+}
+
+func TestRange2(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+
+	// sample data
+	testV := []int{50, 100, 150, 400, 450, 500, 600, 850, 900, 950, 1000}
+	for _, v := range testV {
+		if err := r.Put(int64(v), 0, float32(v)); err != nil {
+			t.Errorf("Put error: %s", err.Error())
+		}
+	}
+
+	// get last - should use arch "a0"
+	if vls, err := r.GetRange(800, 980, []int{0}); err != nil {
+		t.Errorf("GetRange error: %s", err.Error())
+	} else {
+		exp := [][]int{
+			{850, 850}, {900, 900}, {950, 950},
 		}
 
 		if len(vls) != len(exp) {

@@ -209,6 +209,7 @@ func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, 
 
 // Iterate create iterator for archive
 func (b *BinaryFileStorage) Iterate(archive int, begin, end int64, columns []int) (RowsIterator, error) {
+	//fmt.Printf("archive=%d, begin=%d, end=%d, columns=%#v\n", archive, begin, end, columns)
 	return &BinaryFileIterator{
 		file:       b,
 		archive:    archive,
@@ -315,7 +316,10 @@ func (i *BinaryFileIterator) Next() error {
 		if err := binary.Read(i.file.f, binary.LittleEndian, &ts); err != nil {
 			return err
 		}
-		if ts >= 0 {
+		if ts >= i.begin {
+			if i.end > -1 && ts > i.end {
+				return io.EOF
+			}
 			i.ts = ts
 			i.rowOffset = rowOffset
 			return nil
