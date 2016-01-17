@@ -149,12 +149,14 @@ func getValue(c *cli.Context) {
 		return
 	}
 
+	separator := c.GlobalString("separator")
+
 	if values, err := f.Get(timestamp, colsIDs...); err == nil {
 		for _, val := range values {
 			if val.Valid {
-				fmt.Print(val.Value, "; ")
+				fmt.Print(val.Value, separator)
 			} else {
-				fmt.Print("; ")
+				fmt.Print(separator)
 			}
 		}
 		fmt.Println()
@@ -207,7 +209,7 @@ func getRangeValues(c *cli.Context) {
 
 	var timeFmt func(int64) string
 	if c.GlobalIsSet("format-ts") {
-		format := c.String("custom-ts-format")
+		format := c.GlobalString("custom-ts-format")
 		if format == "" {
 			format = time.RFC3339
 		}
@@ -220,14 +222,16 @@ func getRangeValues(c *cli.Context) {
 		}
 	}
 
+	separator := c.GlobalString("separator")
+
 	if rows, err := f.GetRange(tsMin, tsMax, colsIDs); err == nil {
 		for _, row := range rows {
-			fmt.Print(timeFmt(row.TS), "\t")
+			fmt.Print(timeFmt(row.TS), separator)
 			for _, col := range row.Values {
 				if col.Valid {
 					fmt.Printf("%f", col.Value)
 				}
-				fmt.Print("\t")
+				fmt.Print(separator)
 			}
 			fmt.Print("\n")
 		}

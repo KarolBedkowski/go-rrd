@@ -26,6 +26,11 @@ func main() {
 			Value: "2006-01-02T15:04:05Z07:00",
 			Usage: "time stamp formatting string",
 		},
+		cli.StringFlag{
+			Name:  "separator",
+			Value: "\t",
+			Usage: "fields separator",
+		},
 	}
 	app.Commands = []cli.Command{
 		{
