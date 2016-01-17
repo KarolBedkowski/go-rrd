@@ -277,6 +277,8 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int) (Rows, error) {
 
 	archiveID, aMinTS, aMaxTS := r.findArchiveForRange(minTS, maxTS)
 
+	//fmt.Printf("archiveID=%d, aMinTS=%d, aMaxTS=%d\n", archiveID, aMinTS, aMaxTS)
+
 	i, err := r.storage.Iterate(archiveID, aMinTS, aMaxTS, columns)
 	if err != nil {
 		return nil, err
@@ -311,10 +313,10 @@ func (r *RRD) findArchiveForRange(minTS, maxTS int64) (archiveID int, aMinTS, aM
 		archiveID = aID
 		// archive range
 		aOldestTS := a.calcTS(last - int64(a.Rows)*a.Step)
+		aMaxTS = maxTS // check
 		//fmt.Printf("arch=%d, aOldestTS=%d, minTS=%d, last=%d\n", archiveID, aOldestTS, minTS, last)
 		if minTS >= aOldestTS {
 			aMinTS = a.calcTS(minTS)
-			aMaxTS = maxTS // check
 			break
 		}
 	}
