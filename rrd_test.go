@@ -594,6 +594,41 @@ func TestRange(t *testing.T) {
 			}
 		}
 	}
+
+	// a0
+	if vls, err := r.GetRange(491, -1, []int{0}); err != nil {
+		t.Errorf("GetRange error: %s", err.Error())
+	} else {
+		exp := [][]int{{495, 495}, {500, 500}}
+		if len(vls) != len(exp) {
+			t.Errorf("wrong result len: %v", vls)
+			t.Log("dump ", r.LowLevelDebugDump())
+		}
+		for i, e := range exp {
+			v := vls[i].Values[0]
+			for _, err := range checkValue(v, float32(e[1]), int64(e[0]), true, 0, 0) {
+				t.Error(err)
+				t.Logf("dump: %s", r.LowLevelDebugDump())
+			}
+		}
+	}
+
+	if vls, err := r.GetRange(100, 300, []int{0}); err != nil {
+		t.Errorf("GetRange error: %s", err.Error())
+	} else {
+		exp := [][]int{{100, 150}, {200, 250}, {300, 300}}
+		if len(vls) != len(exp) {
+			t.Errorf("wrong result len: %v", vls)
+			t.Log("dump ", r.LowLevelDebugDump())
+		}
+		for i, e := range exp {
+			v := vls[i].Values[0]
+			for _, err := range checkValue(v, float32(e[1]), int64(e[0]), true, 2, 0) {
+				t.Error(err)
+				t.Logf("dump: %s", r.LowLevelDebugDump())
+			}
+		}
+	}
 }
 
 func createTestDB(t *testing.T) (*RRD, []RRDColumn, []RRDArchive) {
