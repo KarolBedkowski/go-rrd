@@ -5,11 +5,14 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"sync"
 )
 
 type (
 	// RRD database
 	RRD struct {
+		mu sync.RWMutex
+
 		storage  Storage
 		filename string
 		readonly bool
@@ -122,10 +125,16 @@ func NewRRD(filename string, columns []RRDColumn, archives []RRDArchive) (*RRD, 
 
 // Close rrd database
 func (r *RRD) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	return r.storage.Close()
 }
 
 func (r *RRD) String() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	return fmt.Sprintf("RRDFile[filename=%s, readolny=%v, columns=%#v, archives=%#v]",
 		r.filename, r.readonly, r.columns, r.archives)
 }
@@ -143,6 +152,9 @@ func (r *RRD) Put(ts int64, col int, value float32) error {
 
 // PutValues - write
 func (r *RRD) PutValues(values ...Value) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if r.readonly {
 		return fmt.Errorf("RRD file open as read-only")
 	}
@@ -202,6 +214,9 @@ func (r *RRD) PutValues(values ...Value) error {
 
 // Get get values for timestamp.
 func (r *RRD) Get(ts int64, columns ...int) ([]Value, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if len(columns) == 0 {
 		columns = r.allColumnsIDs()
 	}
@@ -223,6 +238,9 @@ func (r *RRD) getFromArchive(aID int, ts int64, columns []int) ([]Value, error) 
 
 // Last return last timestamp from db
 func (r *RRD) Last() (int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	var last int64 = -1
 	i, err := r.storage.Iterate(0, 0, -1, nil)
 	if err != nil {
@@ -250,6 +268,9 @@ func (r *RRD) Last() (int64, error) {
 
 // GetRange finds all records in given range
 func (r *RRD) GetRange(minTS, maxTS int64, columns []int) (Rows, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	if len(columns) == 0 {
 		columns = r.allColumnsIDs()
 	}
@@ -309,6 +330,9 @@ func (r *RRD) allColumnsIDs() (cols []int) {
 
 // Info return RRDFileInfo structure for current file
 func (r *RRD) Info() (*RRDFileInfo, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	res := &RRDFileInfo{
 		Filename:      r.filename,
 		ColumnsCount:  len(r.columns),
@@ -369,6 +393,9 @@ func (r *RRD) infoArchive(aID int, a RRDArchive) (RRDArchiveInfo, error) {
 
 // LowLevelDebugDump return informations useful to debug
 func (r *RRD) LowLevelDebugDump() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	var res []string
 	res = append(res, fmt.Sprintf("Filename: %s", r.filename))
 	res = append(res, fmt.Sprintf("ColumnsCount: %d", len(r.columns)))

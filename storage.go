@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 )
 
 /*
@@ -20,6 +21,8 @@ archives[archives count]
 type (
 	// BinaryFileStorage use binary encoding for storing files
 	BinaryFileStorage struct {
+		mu sync.RWMutex
+
 		filename string
 		header   bfHeader
 		readonly bool
@@ -57,6 +60,7 @@ type (
 
 	// BinaryFileIterator is iterator for binary encoded file
 	BinaryFileIterator struct {
+		mu         sync.RWMutex
 		file       *BinaryFileStorage
 		archive    int
 		currentRow int
@@ -79,6 +83,13 @@ const (
 
 // Create new file
 func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archives []RRDArchive) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.f != nil {
+		return fmt.Errorf("already open")
+	}
+
 	f, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -132,6 +143,13 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 
 // Open existing file
 func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, []RRDArchive, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.f != nil {
+		return nil, nil, fmt.Errorf("already open")
+	}
+
 	if flock, err := lock.Lock(filename + ".lock"); err != nil {
 		return nil, nil, err
 	} else {
@@ -174,13 +192,30 @@ func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, [
 
 // Close file
 func (b *BinaryFileStorage) Close() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.f == nil {
+		return nil
+	}
+
 	err := b.f.Close()
 	b.fLock.Close()
+
+	b.f = nil
+
 	return err
 }
 
 // Put values into archive
 func (b *BinaryFileStorage) Put(archive int, ts int64, values ...Value) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.f == nil {
+		return fmt.Errorf("closed file")
+	}
+
 	if b.readonly {
 		return fmt.Errorf("RRD file open as read-only")
 	}
@@ -203,6 +238,13 @@ func (b *BinaryFileStorage) Put(archive int, ts int64, values ...Value) error {
 
 // Get values (selected columns) from archive
 func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if b.f == nil {
+		return nil, fmt.Errorf("closed file")
+	}
+
 	a := b.archives[archive]
 	rowOffset := a.calcRowOffset(ts)
 
@@ -225,6 +267,12 @@ func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, 
 
 // Iterate create iterator for archive
 func (b *BinaryFileStorage) Iterate(archive int, begin, end int64, columns []int) (RowsIterator, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if b.f == nil {
+		return nil, fmt.Errorf("closed file")
+	}
 	//fmt.Printf("archive=%d, begin=%d, end=%d, columns=%#v\n", archive, begin, end, columns)
 	return &BinaryFileIterator{
 		file:       b,
@@ -313,11 +361,21 @@ func (b *BinaryFileStorage) writeEmptyRow(ts int64) error {
 
 // TS is time stamp
 func (i *BinaryFileIterator) TS() int64 {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
 	return i.ts
 }
 
 // Next move to next row, return io.EOF on error
 func (i *BinaryFileIterator) Next() error {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	if i.file.f == nil {
+		return fmt.Errorf("closed file")
+	}
+
 	a := i.file.archives[i.archive]
 	for {
 		if i.currentRow >= int(a.Rows)-1 {
@@ -345,6 +403,13 @@ func (i *BinaryFileIterator) Next() error {
 
 // Value return value for one column in current row
 func (i *BinaryFileIterator) Value(column int) (*Value, error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
+	if i.file.f == nil {
+		return nil, fmt.Errorf("closed file")
+	}
+
 	if i.ts < 0 {
 		return nil, fmt.Errorf("no next() or no data")
 	}
@@ -361,6 +426,13 @@ func (i *BinaryFileIterator) Value(column int) (*Value, error) {
 
 // Values return all values according to columns defined during creating iterator
 func (i *BinaryFileIterator) Values() (values []Value, err error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
+	if i.file.f == nil {
+		return nil, fmt.Errorf("closed file")
+	}
+
 	if i.ts < 0 {
 		return nil, fmt.Errorf("no next() or no data")
 	}
