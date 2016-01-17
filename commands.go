@@ -411,7 +411,8 @@ func printRRDInfo(f *RRD) {
 			fmt.Printf(" - Name: %s\n", a.Name)
 			fmt.Printf("   Rows: %d\n", a.Rows)
 			fmt.Printf("   Step: %d\n", a.Step)
-			fmt.Printf("   TS range: %d - %d\n", a.MinTS, a.MaxTS)
+			fmt.Printf("   TS range: %d - %d (%s-%s)\n", a.MinTS, a.MaxTS,
+				time.Unix(a.MinTS, 0).String(), time.Unix(a.MaxTS, 0).String())
 			fmt.Printf("   Used rows: %d (%0.1f%%)\n", a.UsedRows,
 				100.0*float32(a.UsedRows)/float32(a.Rows))
 			valuesInRows := float32(0)
