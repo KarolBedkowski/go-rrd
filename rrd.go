@@ -56,6 +56,7 @@ type (
 		//Iterate over valid rows in optional begin-end range using RowsIterator
 		//Loads only given columns.
 		Iterate(archive int, begin, end int64, columns []int) (RowsIterator, error)
+		Flush()
 	}
 
 	// RowsIterator allow iterating over database
@@ -131,12 +132,24 @@ func (r *RRD) Close() error {
 	return r.storage.Close()
 }
 
+func (r *RRD) Flush() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.storage.Flush()
+
+}
+
 func (r *RRD) String() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	return fmt.Sprintf("RRDFile[filename=%s, readolny=%v, columns=%#v, archives=%#v]",
 		r.filename, r.readonly, r.columns, r.archives)
+}
+
+func (r *RRD) ColumnName(col int) string {
+	return r.columns[col].Name
 }
 
 // Put value into database

@@ -108,6 +108,19 @@ func main() {
 			Usage:  "get last time stamp from database",
 			Action: showLast,
 		},
+		{
+			Name:    "serve",
+			Aliases: []string{"s"},
+			Usage:   "start service",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "address",
+					Value: ":9390",
+					Usage: "web server address",
+				},
+			},
+			Action: startServer,
+		},
 	}
 	app.Run(os.Args)
 }

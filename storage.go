@@ -207,6 +207,15 @@ func (b *BinaryFileStorage) Close() error {
 	return err
 }
 
+func (b *BinaryFileStorage) Flush() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.f != nil {
+		b.f.Sync()
+	}
+}
+
 // Put values into archive
 func (b *BinaryFileStorage) Put(archive int, ts int64, values ...Value) error {
 	b.mu.Lock()

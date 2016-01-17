@@ -283,6 +283,19 @@ func showLast(c *cli.Context) {
 
 }
 
+func startServer(c *cli.Context) {
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+
+	server := Server{
+		Address:    c.String("address"),
+		DbFilename: filename,
+	}
+	server.Start()
+}
+
 var timeFormats = []string{
 	time.RFC822,
 	time.RFC822Z,
