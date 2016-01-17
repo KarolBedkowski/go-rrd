@@ -60,6 +60,7 @@ func TestNewRRD(t *testing.T) {
 	closeTestDb(t, r)
 
 	r2, err := OpenRRD("tmp.rdb", true)
+	defer r2.Close()
 	if err != nil {
 		t.Errorf("OpenRRD error: %s", err.Error())
 		return
@@ -624,7 +625,7 @@ func createTestDB(t *testing.T) (*RRD, []RRDColumn, []RRDArchive) {
 func closeTestDb(t *testing.T, r *RRD) {
 	err := r.Close()
 	if err != nil {
-		t.Errorf("NewRRD close error: %s", err.Error())
+		t.Errorf("RRD close error: %s", err.Error())
 	}
 }
 

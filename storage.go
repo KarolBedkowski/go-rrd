@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/camlistore/lock"
 	"io"
 	"os"
 	"strings"
@@ -26,7 +27,8 @@ type (
 		columns  []bfColumn
 		archives []bfArchive
 
-		f *os.File
+		f     *os.File
+		fLock io.Closer
 
 		rowSize int
 	}
@@ -82,6 +84,12 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 		return err
 	}
 
+	if flock, err := lock.Lock(filename + ".lock"); err != nil {
+		return err
+	} else {
+		b.fLock = flock
+	}
+
 	b.f = f
 	b.filename = filename
 	b.header = bfHeader{
@@ -124,6 +132,12 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 
 // Open existing file
 func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, []RRDArchive, error) {
+	if flock, err := lock.Lock(filename + ".lock"); err != nil {
+		return nil, nil, err
+	} else {
+		b.fLock = flock
+	}
+
 	flag := os.O_RDWR
 	if readonly {
 		flag = os.O_RDONLY
@@ -160,7 +174,9 @@ func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, [
 
 // Close file
 func (b *BinaryFileStorage) Close() error {
-	return b.f.Close()
+	err := b.f.Close()
+	b.fLock.Close()
+	return err
 }
 
 // Put values into archive
