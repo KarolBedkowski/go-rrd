@@ -82,10 +82,28 @@ func putValues(c *cli.Context) {
 			return
 		}
 		values = append(values, Value{
-			TS:    timestamp,
-			Value: float32(v),
-			Valid: true,
+			TS:     timestamp,
+			Value:  float32(v),
+			Valid:  true,
+			Column: idx,
 		})
+	}
+
+	if c.IsSet("columns") {
+		colsIDs, err := getContextParamIntList(c, "columns")
+		if err != nil {
+			fmt.Println("Invalid --columns parameter: ", err.Error())
+			return
+		}
+		if len(colsIDs) != len(values) {
+			fmt.Println("Number of columns (--columns) don't match number of values")
+			return
+		}
+		for idx, c := range colsIDs {
+			val := values[idx]
+			val.Column = c
+			values[idx] = val
+		}
 	}
 
 	f, err := OpenRRD(filename, false)
