@@ -2,8 +2,14 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"testing"
 )
+
+func TestMain(m *testing.M) {
+	//Debug = true
+	os.Exit(m.Run())
+}
 
 func TestRRDArchiveCalcTS(t *testing.T) {
 	a := RRDArchive{

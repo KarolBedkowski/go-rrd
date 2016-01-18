@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"net/http"
 	"strconv"
+
+	"github.com/gorilla/mux"
 )
 
 /*
@@ -85,12 +86,15 @@ func (s *Server) Start() {
 }
 
 func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request) {
+	Log("Server.queryHandler %s from %s", r.RequestURI, r.RemoteAddr)
 	var req QueryRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("decode error %s\n", err.Error()), http.StatusBadRequest)
 		return
 	}
+
+	LogDebug("Server.putHandler req: %+v", req)
 
 	if req.Begin == "" {
 		req.Begin = "0"
@@ -145,6 +149,8 @@ func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	LogDebug("Server.queryHandler res: %+v", resp)
+
 	j, err := json.Marshal(resp)
 	if err != nil {
 		fmt.Printf("encode error %s\n", err.Error())
@@ -156,12 +162,15 @@ func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) putHandler(w http.ResponseWriter, r *http.Request) {
+	Log("Server.putHandler %s from %s", r.RequestURI, r.RemoteAddr)
 	var req PutRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("decode error %s\n", err.Error()), http.StatusBadRequest)
 		return
 	}
+
+	LogDebug("Server.putHandler req: %+v", req)
 
 	if req.TS == "" {
 		req.TS = "0"
@@ -192,6 +201,7 @@ func (s *Server) putHandler(w http.ResponseWriter, r *http.Request) {
 		values = append(values, value)
 	}
 
+	LogDebug("Server.putHandler res: %+v", values)
 	err = s.db.PutValues(values...)
 	if err != nil {
 		http.Error(w, "put error "+err.Error(), http.StatusBadRequest)

@@ -94,6 +94,7 @@ type (
 
 // OpenRRD open existing rrd database
 func OpenRRD(filename string, readonly bool) (*RRD, error) {
+	LogDebug("OpenRRD filename=%s, readonly=%v", filename, readonly)
 	rrd := &RRD{
 		filename: filename,
 		storage:  &BinaryFileStorage{},
@@ -101,15 +102,13 @@ func OpenRRD(filename string, readonly bool) (*RRD, error) {
 	}
 	var err error
 	rrd.columns, rrd.archives, err = rrd.storage.Open(filename, readonly)
-	if err != nil {
-		return nil, err
-	}
-
-	return rrd, nil
+	return rrd, err
 }
 
 // NewRRD create new rrd database
 func NewRRD(filename string, columns []RRDColumn, archives []RRDArchive) (*RRD, error) {
+	LogDebug("NewRRD filename=%s, columns=%v, archives=%v",
+		filename, columns, archives)
 	rrd := &RRD{
 		filename: filename,
 		storage:  &BinaryFileStorage{},
@@ -118,14 +117,12 @@ func NewRRD(filename string, columns []RRDColumn, archives []RRDArchive) (*RRD, 
 		archives: archives,
 	}
 	err := rrd.storage.Create(filename, columns, archives)
-	if err != nil {
-		return nil, err
-	}
-	return rrd, nil
+	return rrd, err
 }
 
 // Close rrd database
 func (r *RRD) Close() error {
+	LogDebug("RRD.Close")
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -133,11 +130,11 @@ func (r *RRD) Close() error {
 }
 
 func (r *RRD) Flush() {
+	LogDebug("RRD.Close")
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.storage.Flush()
-
 }
 
 func (r *RRD) String() string {
@@ -154,6 +151,7 @@ func (r *RRD) ColumnName(col int) string {
 
 // Put value into database
 func (r *RRD) Put(ts int64, col int, value float32) error {
+	LogDebug("RRD.Put ts=%v, col=%d, value=%v", ts, col, value)
 	v := Value{
 		TS:     ts,
 		Valid:  true,
@@ -165,6 +163,8 @@ func (r *RRD) Put(ts int64, col int, value float32) error {
 
 // PutValues - write
 func (r *RRD) PutValues(values ...Value) error {
+	LogDebug("RRD.PutValues values=%v", values)
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -177,16 +177,18 @@ func (r *RRD) PutValues(values ...Value) error {
 		cols = append(cols, v.Column)
 	}
 	if len(cols) == 0 { // no columns defined
+		LogDebug("RRD.PutValues load all columns")
 		cols = r.allColumnsIDs()
 	}
 
 	for aID, a := range r.archives {
-		//fmt.Printf("\nUpdating archive %s; cols=%v\n", a.Name, cols)
+		LogDebug("RRD.PutValues updating archive %d", a)
 
 		// all values should have this same TS
 		ts := a.calcTS(values[0].TS)
 
 		// get previous values
+		LogDebug("RRD.PutValues get prevoius values")
 		preValues, err := r.storage.Get(aID, ts, cols)
 		if err != nil {
 			return err
@@ -194,6 +196,7 @@ func (r *RRD) PutValues(values ...Value) error {
 		// update
 		var updatedVal []Value
 		if len(preValues) > 0 {
+			LogDebug("RRD.PutValues found prevoius values: %v", preValues)
 			for i, v := range values {
 				pv := preValues[i]
 				col := cols[i]
@@ -218,6 +221,7 @@ func (r *RRD) PutValues(values ...Value) error {
 		}
 
 		// write updated values
+		LogDebug("RRD.PutValues writing values: %v", updatedVal)
 		if err = r.storage.Put(aID, ts, updatedVal...); err != nil {
 			return err
 		}
@@ -227,19 +231,25 @@ func (r *RRD) PutValues(values ...Value) error {
 
 // Get get values for timestamp.
 func (r *RRD) Get(ts int64, columns ...int) ([]Value, error) {
+	LogDebug("RRD.Get ts=%s, columns=%v", ts, columns)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	if len(columns) == 0 {
+		LogDebug("RRD.Get load all columns")
 		columns = r.allColumnsIDs()
 	}
 
 	for aID := range r.archives {
+		LogDebug("RRD.Get checking archive %d", aID)
 		values, err := r.getFromArchive(aID, ts, columns)
 		if values != nil || err != nil {
+			LogDebug("RRD.Get found value in archive %d: %v", aID, values)
 			return values, err
 		}
 	}
+
+	LogDebug("RRD.Get value not found")
 	return nil, nil
 }
 
@@ -251,6 +261,8 @@ func (r *RRD) getFromArchive(aID int, ts int64, columns []int) ([]Value, error) 
 
 // Last return last timestamp from db
 func (r *RRD) Last() (int64, error) {
+	LogDebug("RRD.Last")
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -281,16 +293,18 @@ func (r *RRD) Last() (int64, error) {
 
 // GetRange finds all records in given range
 func (r *RRD) GetRange(minTS, maxTS int64, columns []int) (Rows, error) {
+	LogDebug("RRD.GetRange minTS=%d, maxTS=%d, columns=%v", minTS, maxTS, columns)
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	if len(columns) == 0 {
+		LogDebug("RRD.GetRange load all columns")
 		columns = r.allColumnsIDs()
 	}
 
 	archiveID, aMinTS, aMaxTS := r.findArchiveForRange(minTS, maxTS)
-
-	//fmt.Printf("archiveID=%d, aMinTS=%d, aMaxTS=%d\n", archiveID, aMinTS, aMaxTS)
+	LogDebug("RRD.GetRange archive: using archive=%d, aMinTS=%d, aMaxTS=%d", archiveID, aMinTS, aMaxTS)
 
 	i, err := r.storage.Iterate(archiveID, aMinTS, aMaxTS, columns)
 	if err != nil {
@@ -313,11 +327,13 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int) (Rows, error) {
 		rows = append(rows, Row{i.TS(), values})
 	}
 
+	LogDebug("RRD.GetRange found %d records, sorting...", len(rows))
 	sort.Sort(rows)
 	return rows, err
 }
 
 func (r *RRD) findArchiveForRange(minTS, maxTS int64) (archiveID int, aMinTS, aMaxTS int64) {
+	LogDebug("RRD.findArchiveForRange minTS=%d, maxTS=%d", minTS, maxTS)
 	last, err := r.Last()
 	if err != nil {
 		return 0, 0, -1
@@ -330,9 +346,11 @@ func (r *RRD) findArchiveForRange(minTS, maxTS int64) (archiveID int, aMinTS, aM
 		//fmt.Printf("arch=%d, aOldestTS=%d, minTS=%d, last=%d\n", archiveID, aOldestTS, minTS, last)
 		if minTS >= aOldestTS {
 			aMinTS = a.calcTS(minTS)
+			LogDebug("RRD.findArchiveForRange found %d, aMinTS=%d", aID, aMinTS)
 			break
 		}
 	}
+	LogDebug("RRD.findArchiveForRange not found exact archive, using last %d, aMinTS=%d", archiveID, aMinTS)
 	return
 }
 

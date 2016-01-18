@@ -3,11 +3,12 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/camlistore/lock"
 	"io"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/camlistore/lock"
 )
 
 /*
@@ -83,6 +84,7 @@ const (
 
 // Create new file
 func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archives []RRDArchive) error {
+	LogDebug("BFS.Create filename=%s, columns=%v, archives=%v", filename, columns, archives)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -90,15 +92,18 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 		return fmt.Errorf("already open")
 	}
 
-	f, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-
+	//	 TODO: check is exists
+	LogDebug("BFS.Create locking")
 	if flock, err := lock.Lock(filename + ".lock"); err != nil {
 		return err
 	} else {
 		b.fLock = flock
+	}
+
+	LogDebug("BFS.Create creating file")
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
 	}
 
 	b.f = f
@@ -120,6 +125,8 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 	b.rowSize = valueSize*len(b.columns) + 8 // ts
 	b.archives = calcArchiveOffsetSize(archives, b.rowSize, allHeadersLen)
 
+	LogDebug("BFS.Create rowSize=%d, allHeadersLen=%d", b.rowSize, allHeadersLen)
+
 	if err = writeHeader(f, b.header); err != nil {
 		return err
 	}
@@ -130,6 +137,8 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 		return err
 	}
 
+	LogDebug("BFS.Create creating archive space")
+
 	for _, a := range b.archives {
 		for i := 0; i < int(a.Rows); i++ {
 			if err := b.writeEmptyRow(-1); err != nil {
@@ -138,11 +147,15 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 		}
 	}
 
+	LogDebug("BFS.Create creating done")
+
 	return f.Sync()
 }
 
 // Open existing file
 func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, []RRDArchive, error) {
+	LogDebug("BFS.Open filename=%s, readonly=%v", filename, readonly)
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -150,12 +163,14 @@ func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, [
 		return nil, nil, fmt.Errorf("already open")
 	}
 
+	LogDebug("BFS.Open locking file")
 	if flock, err := lock.Lock(filename + ".lock"); err != nil {
 		return nil, nil, err
 	} else {
 		b.fLock = flock
 	}
 
+	LogDebug("BFS.Open opening file")
 	flag := os.O_RDWR
 	if readonly {
 		flag = os.O_RDONLY
@@ -169,6 +184,7 @@ func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, [
 	b.filename = filename
 	b.readonly = readonly
 
+	LogDebug("BFS.Open loading headers")
 	if _, err = f.Seek(0, 0); err != nil {
 		return nil, nil, err
 	}
@@ -187,6 +203,7 @@ func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, [
 		return nil, nil, err
 	}
 
+	LogDebug("BFS.Open opening finished")
 	return bfColumnToRRDColumn(b.columns), bfArchiveToRRDArchive(b.archives), err
 }
 
@@ -194,6 +211,8 @@ func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, [
 func (b *BinaryFileStorage) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	LogDebug("BFS.Close")
 
 	if b.f == nil {
 		return nil
@@ -204,6 +223,7 @@ func (b *BinaryFileStorage) Close() error {
 
 	b.f = nil
 
+	LogDebug("BFS.Close done")
 	return err
 }
 
@@ -211,15 +231,20 @@ func (b *BinaryFileStorage) Flush() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	LogDebug("BFS.Flush")
+
 	if b.f != nil {
 		b.f.Sync()
 	}
+	LogDebug("BFS.Flush finished")
 }
 
 // Put values into archive
 func (b *BinaryFileStorage) Put(archive int, ts int64, values ...Value) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	LogDebug("BFS.Put archive=%d, ts=%d, values=%v", archive, ts, values)
 
 	if b.f == nil {
 		return fmt.Errorf("closed file")
@@ -236,12 +261,15 @@ func (b *BinaryFileStorage) Put(archive int, ts int64, values ...Value) error {
 		return err
 	}
 
+	LogDebug("BFS.Put writing values")
 	for _, v := range values {
 		if _, err := b.f.Seek(rowOffset+8+int64(valueSize*v.Column), 0); err != nil {
 			return err
 		}
 		writeValue(b.f, v)
 	}
+
+	LogDebug("BFS.Put done")
 	return nil
 }
 
@@ -250,12 +278,16 @@ func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, 
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
+	LogDebug("BFS.Get archive=%d, ts=%d, columns=%v", archive, ts, columns)
+
 	if b.f == nil {
 		return nil, fmt.Errorf("closed file")
 	}
 
 	a := b.archives[archive]
 	rowOffset := a.calcRowOffset(ts)
+
+	LogDebug("BFS.Get rowOffset=%d", rowOffset)
 
 	// Read real ts
 	if _, err := b.f.Seek(rowOffset, 0); err != nil {
@@ -270,7 +302,7 @@ func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, 
 		// value not found in this archive, search in next
 		return nil, nil
 	}
-	//fmt.Printf("Getting from %s - %d, %v\n", a.Name, rowOffset, cols)
+	LogDebug("BFS.Get loading...")
 	return b.loadValues(rowOffset, rowTS, columns, archive)
 }
 
@@ -279,10 +311,12 @@ func (b *BinaryFileStorage) Iterate(archive int, begin, end int64, columns []int
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
+	LogDebug("BFS.Iterate archive=%d, begin=%d, end=%d, columns=%v", archive, begin, end, columns)
+
 	if b.f == nil {
 		return nil, fmt.Errorf("closed file")
 	}
-	//fmt.Printf("archive=%d, begin=%d, end=%d, columns=%#v\n", archive, begin, end, columns)
+
 	return &BinaryFileIterator{
 		file:       b,
 		archive:    archive,
@@ -295,6 +329,7 @@ func (b *BinaryFileStorage) Iterate(archive int, begin, end int64, columns []int
 }
 
 func (b *BinaryFileStorage) loadValue(ts int64, column, archive int) (v Value, err error) {
+	LogDebug("BFS.loadValue ts=%d, column=%d, archive=%d", ts, column, archive)
 	v = Value{
 		TS:        ts,
 		Column:    column,
@@ -315,6 +350,7 @@ func (b *BinaryFileStorage) loadValue(ts int64, column, archive int) (v Value, e
 }
 
 func (b *BinaryFileStorage) loadValues(rowOffset int64, rowTS int64, cols []int, archive int) ([]Value, error) {
+	LogDebug("BFS.loadValues rowOffset=%d, rowTD=%d, column=%d, archive=%d", rowOffset, rowTS, cols, archive)
 	var values []Value
 	for _, col := range cols {
 		if _, err := b.f.Seek(rowOffset+8+int64(col*valueSize), 0); err != nil {
@@ -330,6 +366,8 @@ func (b *BinaryFileStorage) loadValues(rowOffset int64, rowTS int64, cols []int,
 }
 
 func (b *BinaryFileStorage) checkAndCleanRow(ts int64, tsOffset int64) error {
+	LogDebug("BFS.checkAndCleanRow ts=%d, tsOffset=%d", ts, tsOffset)
+
 	if _, err := b.f.Seek(tsOffset, 0); err != nil {
 		return err
 	}
@@ -338,8 +376,10 @@ func (b *BinaryFileStorage) checkAndCleanRow(ts int64, tsOffset int64) error {
 		return err
 	}
 	if storeTS == ts {
+		LogDebug("BFS.checkAndCleanRow not need to clean")
 		return nil
 	}
+	LogDebug("BFS.checkAndCleanRow cleaning")
 	if storeTS > ts {
 		return fmt.Errorf("updating by older value not allowed")
 	}
@@ -378,6 +418,8 @@ func (i *BinaryFileIterator) TS() int64 {
 
 // Next move to next row, return io.EOF on error
 func (i *BinaryFileIterator) Next() error {
+	LogDebug("BFS.Next [iter: row=%d, rowOffset=%d]", i.currentRow, i.rowOffset)
+
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
@@ -388,6 +430,7 @@ func (i *BinaryFileIterator) Next() error {
 	a := i.file.archives[i.archive]
 	for {
 		if i.currentRow >= int(a.Rows)-1 {
+			LogDebug("BFS.Next eof - last row")
 			return io.EOF
 		}
 		i.currentRow++
@@ -401,6 +444,7 @@ func (i *BinaryFileIterator) Next() error {
 		}
 		if ts >= i.begin {
 			if i.end > -1 && ts > i.end {
+				LogDebug("BFS.Next eof - lower value")
 				return io.EOF
 			}
 			i.ts = ts
@@ -412,6 +456,8 @@ func (i *BinaryFileIterator) Next() error {
 
 // Value return value for one column in current row
 func (i *BinaryFileIterator) Value(column int) (*Value, error) {
+	LogDebug("BFS.Value col=%d [iter: row=%d, rowOffset=%d]", column, i.currentRow, i.rowOffset)
+
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
@@ -435,6 +481,7 @@ func (i *BinaryFileIterator) Value(column int) (*Value, error) {
 
 // Values return all values according to columns defined during creating iterator
 func (i *BinaryFileIterator) Values() (values []Value, err error) {
+	LogDebug("BFS.Values [iter: row=%d, rowOffset=%d]", i.currentRow, i.rowOffset)
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
@@ -495,6 +542,7 @@ func calcArchiveOffsetSize(archives []RRDArchive, rowSize int, baseOffset int) (
 }
 
 func loadHeader(r io.Reader) (header bfHeader, err error) {
+	LogDebug("BFS.loadHeader")
 	header = bfHeader{}
 	if err = binary.Read(r, binary.LittleEndian, &header.Version); err != nil {
 		return
@@ -516,11 +564,14 @@ func loadHeader(r io.Reader) (header bfHeader, err error) {
 	if header.Magic != fileMagic {
 		err = fmt.Errorf("invalid file (magic)")
 	}
+	LogDebug("BFS.loadHeader finished cols=%d, archs=%d",
+		header.ColumnsCount, header.ArchivesCount)
 	return
 
 }
 
 func writeHeader(w io.Writer, header bfHeader) (err error) {
+	LogDebug("BFS.writeHeader")
 	if err = binary.Write(w, binary.LittleEndian, header.Version); err != nil {
 		return
 	}
@@ -533,10 +584,12 @@ func writeHeader(w io.Writer, header bfHeader) (err error) {
 	if err = binary.Write(w, binary.LittleEndian, header.Magic); err != nil {
 		return
 	}
+	LogDebug("BFS.writeHeader finished")
 	return nil
 }
 
 func loadColumnsDef(r io.Reader, colCount int) (cols []bfColumn, err error) {
+	LogDebug("BFS.loadColumnsDef")
 	for i := 0; i < colCount; i++ {
 		buf := make([]byte, 16, 16)
 		if err = binary.Read(r, binary.LittleEndian, &buf); err != nil {
@@ -555,10 +608,12 @@ func loadColumnsDef(r io.Reader, colCount int) (cols []bfColumn, err error) {
 		}
 		cols = append(cols, col)
 	}
+	LogDebug("BFS.loadColumnsDef finished cols num=%d", len(cols))
 	return
 }
 
 func writeColumnsDef(w io.Writer, cols []bfColumn) (err error) {
+	LogDebug("BFS.writeColumnsDef")
 	for _, col := range cols {
 		name := make([]byte, 16, 16)
 		if len(col.Name) > 16 {
@@ -573,10 +628,12 @@ func writeColumnsDef(w io.Writer, cols []bfColumn) (err error) {
 			return
 		}
 	}
+	LogDebug("BFS.writeColumnsDef finished")
 	return
 }
 
 func loadArchiveDef(r io.Reader, archCount int, rowSize int) (archives []bfArchive, err error) {
+	LogDebug("BFS.loadArchiveDef archCount=%d, rowSize=%d", archCount, rowSize)
 	for i := 0; i < archCount; i++ {
 		buf := make([]byte, 16, 16)
 		if err = binary.Read(r, binary.LittleEndian, &buf); err != nil {
@@ -602,10 +659,12 @@ func loadArchiveDef(r io.Reader, archCount int, rowSize int) (archives []bfArchi
 		}
 		archives = append(archives, a)
 	}
+	LogDebug("BFS.loadArchiveDef archCount=%d", len(archives))
 	return
 }
 
 func writeArchivesDef(w io.Writer, archives []bfArchive) (err error) {
+	LogDebug("BFS.writeArchivesDef")
 	for _, a := range archives {
 		name := make([]byte, 16, 16)
 		if len(a.Name) > 16 {
@@ -629,6 +688,7 @@ func writeArchivesDef(w io.Writer, archives []bfArchive) (err error) {
 			return
 		}
 	}
+	LogDebug("BFS.writeArchivesDef finished")
 	return
 }
 

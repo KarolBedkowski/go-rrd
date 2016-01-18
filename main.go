@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/codegangsta/cli"
@@ -30,6 +29,10 @@ func main() {
 			Name:  "separator",
 			Value: "\t",
 			Usage: "fields separator",
+		},
+		cli.BoolFlag{
+			Name:  "debug, d",
+			Usage: "display debug informations",
 		},
 	}
 	app.Commands = []cli.Command{
@@ -133,7 +136,7 @@ func main() {
 func getFilenameParam(c *cli.Context) (string, bool) {
 	filename := c.GlobalString("filename")
 	if !c.GlobalIsSet("filename") || filename == "" {
-		fmt.Println("Missing database file name")
+		LogError("Missing database file name (--filename)")
 		return "", false
 	}
 	return filename, true

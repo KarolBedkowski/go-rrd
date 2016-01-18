@@ -11,66 +11,58 @@ import (
 )
 
 func initDB(c *cli.Context) {
-	filename, ok := getFilenameParam(c)
-	if !ok {
+	if !processGlobalArgs(c) {
 		return
 	}
+	filename, _ := getFilenameParam(c)
 	cols := c.String("columns")
 	if !c.IsSet("columns") || cols == "" {
-		fmt.Println("Missing number of columns (--columns)")
-		return
+		LogError("Missing number of columns (--columns)")
 	}
 
 	columns, err := parseColumnsDef(cols)
 	if err != nil {
-		fmt.Println("Columns definition error: " + err.Error())
-		return
+		LogError("Columns definition error: " + err.Error())
 	}
 
 	archivesDef := c.String("archives")
 	if !c.IsSet("archives") || archivesDef == "" {
-		fmt.Println("Missing archives definition (--archives)")
-		return
+		LogError("Missing archives definition (--archives)")
 	}
 	archives, err := parseArchiveDef(archivesDef)
 	if err != nil {
-		fmt.Println("Archives definition error: " + err.Error())
-		return
+		LogError("Archives definition error: " + err.Error())
 	}
 
+	ExitWhenErrors()
+
 	f, err := NewRRD(filename, columns, archives)
+	defer close(f)
 	if err != nil {
-		fmt.Println("Init db error: " + err.Error())
+		LogFatal("Init db error: " + err.Error())
 		return
 	}
 
 	printRRDInfo(f)
-
-	err = f.Close()
-	if err != nil {
-		fmt.Println("Closing db error: " + err.Error())
-		return
-	}
 }
 
 func putValues(c *cli.Context) {
-	filename, ok := getFilenameParam(c)
-	if !ok {
+	if !processGlobalArgs(c) {
 		return
 	}
+	filename, _ := getFilenameParam(c)
+
 	ts := c.String("ts")
 	if !c.IsSet("ts") || ts == "" {
 		ts = "now"
 	}
 	timestamp, ok := dateToTs(ts)
 	if !ok {
-		fmt.Println("Parse ts error", timestamp)
-		return
+		LogError("Parse ts error", timestamp)
 	}
 
 	if len(c.Args()) == 0 {
-		fmt.Println("Missing values to put")
-		return
+		LogError("Missing values to put")
 	}
 
 	var values []Value
@@ -78,8 +70,7 @@ func putValues(c *cli.Context) {
 	for idx, a := range c.Args() {
 		v, err := strconv.ParseFloat(a, 32)
 		if err != nil {
-			fmt.Printf("Invalid value '%s' on index %d", a, idx+1)
-			return
+			LogError("Invalid value '%s' on index %d", a, idx+1)
 		}
 		values = append(values, Value{
 			TS:     timestamp,
@@ -92,12 +83,10 @@ func putValues(c *cli.Context) {
 	if c.IsSet("columns") {
 		colsIDs, err := getContextParamIntList(c, "columns")
 		if err != nil {
-			fmt.Println("Invalid --columns parameter: ", err.Error())
-			return
+			LogError("Invalid --columns parameter: ", err.Error())
 		}
 		if len(colsIDs) != len(values) {
-			fmt.Println("Number of columns (--columns) don't match number of values")
-			return
+			LogError("Number of columns (--columns) don't match number of values")
 		}
 		for idx, c := range colsIDs {
 			val := values[idx]
@@ -106,47 +95,45 @@ func putValues(c *cli.Context) {
 		}
 	}
 
+	ExitWhenErrors()
+
 	f, err := OpenRRD(filename, false)
+	defer close(f)
 	if err != nil {
-		fmt.Println("Open db error: " + err.Error())
+		LogFatal("Open db error: %s", err.Error())
 		return
 	}
 
 	err = f.PutValues(values...)
 	if err != nil {
-		fmt.Println("Put error: " + err.Error())
-	}
-	err = f.Close()
-	if err != nil {
-		fmt.Println("Close db error: " + err.Error())
-		return
+		LogError("Put error: %s", err.Error())
 	}
 }
 
 func getValue(c *cli.Context) {
-	filename, ok := getFilenameParam(c)
-	if !ok {
+	if !processGlobalArgs(c) {
 		return
 	}
+	filename, _ := getFilenameParam(c)
 	ts := c.String("ts")
 	if !c.IsSet("ts") || ts == "" {
-		fmt.Println("Missing timestamp (--ts)")
-		return
+		LogError("Missing timestamp (--ts)")
 	}
 	colsIDs, err := getContextParamIntList(c, "columns")
 	if err != nil {
-		fmt.Println("Invalid --columns parameter: ", err.Error())
-		return
+		LogError("Invalid --columns parameter: ", err.Error())
 	}
 	timestamp, ok := dateToTs(ts)
 	if !ok {
-		fmt.Println("Parse ts error")
-		return
+		LogError("Parse ts error")
 	}
+
+	ExitWhenErrors()
+
 	f, err := OpenRRD(filename, true)
+	defer close(f)
 	if err != nil {
-		fmt.Println("Open db error: " + err.Error())
-		return
+		LogFatal("Open db error: %s", err.Error())
 	}
 
 	separator := c.GlobalString("separator")
@@ -161,50 +148,45 @@ func getValue(c *cli.Context) {
 		}
 		fmt.Println()
 	} else {
-		fmt.Println("Missing value")
-	}
-	err = f.Close()
-	if err != nil {
-		fmt.Println("Closing db error: " + err.Error())
-		return
+		Log("Missing value")
 	}
 }
 
 func getRangeValues(c *cli.Context) {
-	filename, ok := getFilenameParam(c)
-	if !ok {
+	if !processGlobalArgs(c) {
 		return
 	}
+	filename, _ := getFilenameParam(c)
 	tsMin := int64(0)
 	tsMinStr := c.String("begin")
 	if c.IsSet("begin") && tsMinStr != "" {
+		var ok bool
 		tsMin, ok = dateToTs(tsMinStr)
 		if !ok {
-			fmt.Println("Parsing begin date error")
-			return
+			LogError("Parsing begin date error")
 		}
 	}
 	tsMaxStr := c.String("end")
 	if !c.IsSet("end") || tsMaxStr == "" {
 		tsMaxStr = "now"
 	}
-	var tsMax int64
-	tsMax, ok = dateToTs(tsMaxStr)
+
+	tsMax, ok := dateToTs(tsMaxStr)
 	if !ok {
-		fmt.Println("Parsing end date error")
-		return
+		LogError("Parsing end date error")
 	}
 
 	colsIDs, err := getContextParamIntList(c, "columns")
 	if err != nil {
-		fmt.Println("Invalid --columns parameter: ", err.Error())
-		return
+		LogError("Invalid --columns parameter: ", err.Error())
 	}
 
+	ExitWhenErrors()
+
 	f, err := OpenRRD(filename, true)
+	defer close(f)
 	if err != nil {
-		fmt.Println("Open db error: " + err.Error())
-		return
+		LogFatal("Open db error: %s", err.Error())
 	}
 
 	var timeFmt func(int64) string
@@ -236,62 +218,59 @@ func getRangeValues(c *cli.Context) {
 			fmt.Print("\n")
 		}
 	} else {
-		fmt.Println("Error: " + err.Error())
-	}
-	err = f.Close()
-	if err != nil {
-		fmt.Println("Closing db error: " + err.Error())
-		return
+		LogFatal("Error: %s", err.Error())
 	}
 }
 
 func showInfo(c *cli.Context) {
-	filename, ok := getFilenameParam(c)
-	if !ok {
+	if !processGlobalArgs(c) {
 		return
 	}
+	filename, _ := getFilenameParam(c)
+
+	ExitWhenErrors()
 
 	f, err := OpenRRD(filename, true)
+	defer close(f)
 	if err != nil {
-		fmt.Println("Open db error: " + err.Error())
+		LogFatal("Open db error: %s", err.Error())
 		return
 	}
 
 	printRRDInfo(f)
-
-	err = f.Close()
-	if err != nil {
-		fmt.Println("Closing db error: " + err.Error())
-		return
-	}
 }
 
 func showLast(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
 	filename, ok := getFilenameParam(c)
 	if !ok {
 		return
 	}
 
+	ExitWhenErrors()
+
 	f, err := OpenRRD(filename, true)
+	defer close(f)
 	if err != nil {
-		fmt.Println("Open db error: " + err.Error())
+		LogFatal("Open db error: %s", err.Error())
 		return
 	}
 
 	fmt.Println(f.Last())
-
-	if err = f.Close(); err != nil {
-		fmt.Println("Closing db error: " + err.Error())
-		return
-	}
-
 }
 
 func startServer(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
 	filename, ok := getFilenameParam(c)
 	if !ok {
 		return
 	}
+
+	ExitWhenErrors()
 
 	server := Server{
 		Address:    c.String("address"),
@@ -443,5 +422,19 @@ func printRRDInfo(f *RRD) {
 	} else {
 		fmt.Println("Error: " + err.Error())
 	}
+}
 
+func processGlobalArgs(c *cli.Context) (ok bool) {
+	Debug = c.GlobalBool("debug")
+	return true
+}
+
+func close(r *RRD) {
+	if r == nil {
+		return
+	}
+
+	if err := r.Close(); err != nil {
+		LogError("Closing db error: %s", err.Error())
+	}
 }
