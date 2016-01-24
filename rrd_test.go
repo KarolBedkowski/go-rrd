@@ -377,6 +377,71 @@ func TestPutDataRR1(t *testing.T) {
 
 }
 
+func TestPutDataRR2(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+	// update value
+
+	for i := 0; i < 15; i++ {
+		if err := r.Put(int64(i), 0, float32(i)); err != nil {
+			t.Errorf("Put error: %s", err.Error())
+		}
+	}
+
+	if last, err := r.Last(); err == nil {
+		if last != 14 {
+			t.Errorf("Last value wrong val, last=%d, expected 14", last)
+			t.Logf("dump: %s", r.LowLevelDebugDump())
+		}
+	} else {
+		t.Errorf("Last get error: %s", err.Error())
+	}
+
+	// check archive 0 - 10 rows step 1
+	// this shouldn't be found in archive 0
+	for i := 0; i < 5; i++ {
+		if values, err := r.getFromArchive(0, int64(i), []int{0}); len(values) > 0 {
+			t.Errorf("found value in archive 0 that shouldn't exists: %d, %#v, %s", i, values, err)
+			t.Logf("dump: %s", r.LowLevelDebugDump())
+		}
+	}
+	for i := 5; i < 15; i++ {
+		if values, err := r.getFromArchive(0, int64(i), []int{0}); err != nil {
+			t.Errorf("Get error: %s", err.Error())
+			t.Logf("dump: %s", r.LowLevelDebugDump())
+		} else {
+			if len(values) != 1 {
+				t.Errorf("Get error: wrong number of values %#v", values)
+			} else {
+				val := values[0]
+
+				for _, err := range checkValue(val, float32(i), int64(i), true, 0, 0) {
+					t.Error(err)
+					t.Logf("dump: %s", r.LowLevelDebugDump())
+				}
+			}
+		}
+	}
+
+	if vls, err := r.GetRange(5, -1, []int{0}); err != nil {
+		t.Errorf("GetRange error: %s", err.Error())
+	} else {
+		if len(vls) != 10 {
+			t.Errorf("wrong result len: %v", vls)
+			t.Log("dump ", r.LowLevelDebugDump())
+		}
+		for i := 0; i < 10; i++ {
+			v := vls[i].Values[0]
+			for _, err := range checkValue(v, float32(i+5), int64(i+5), true, 0, 0) {
+				t.Error(err)
+				t.Logf("dump: %s", r.LowLevelDebugDump())
+				t.Logf("res: %+v", vls)
+				return
+			}
+		}
+	}
+}
+
 func TestPutDataRR3(t *testing.T) {
 	r, _, _ := createTestDB(t)
 	defer closeTestDb(t, r)
@@ -476,6 +541,58 @@ func TestPutDataRR4(t *testing.T) {
 		if int(v.Value) != 1810 || v.TS != 1810 {
 			t.Errorf("Get error: wrong value: %v, expecting 1810", values)
 			t.Logf("dump: %s", r.LowLevelDebugDump())
+		}
+	}
+}
+
+func TestPutDataRR5(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+
+	// few values
+
+	inp := []int{1, 2, 5, 7, 10, 12, 14}
+
+	for _, i := range inp {
+		if err := r.Put(int64(i), 0, float32(i)); err != nil {
+			t.Errorf("Put error: %s", err.Error())
+		}
+	}
+
+	exp := []int{5, 7, 10, 12, 14}
+	for _, i := range exp {
+		if values, err := r.getFromArchive(0, int64(i), []int{0}); err != nil {
+			t.Errorf("Get error: %s", err.Error())
+			t.Logf("dump: %s", r.LowLevelDebugDump())
+		} else {
+			if len(values) != 1 {
+				t.Errorf("Get error: wrong number of values %#v", values)
+			} else {
+				val := values[0]
+				for _, err := range checkValue(val, float32(i), int64(i), true, 0, 0) {
+					t.Error(err)
+					t.Logf("dump: %s", r.LowLevelDebugDump())
+					return
+				}
+			}
+		}
+	}
+
+	if vls, err := r.GetRange(5, -1, []int{0}); err != nil {
+		t.Errorf("GetRange error: %s", err.Error())
+	} else {
+		if len(vls) != len(exp) {
+			t.Errorf("wrong result len: %v", vls)
+			t.Log("dump ", r.LowLevelDebugDump())
+		}
+		for i, e := range exp {
+			v := vls[i].Values[0]
+			for _, err := range checkValue(v, float32(e), int64(e), true, 0, 0) {
+				t.Error(err)
+				t.Logf("dump: %s", r.LowLevelDebugDump())
+				t.Logf("res: %+v", vls)
+				return
+			}
 		}
 	}
 }
