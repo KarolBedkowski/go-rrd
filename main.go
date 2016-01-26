@@ -112,7 +112,7 @@ func main() {
 		},
 		{
 			Name:   "info",
-			Usage:  "show informations about rddfile",
+			Usage:  "show informations about rrdfile",
 			Action: showInfo,
 		},
 		{

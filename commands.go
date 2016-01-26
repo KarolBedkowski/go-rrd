@@ -239,6 +239,10 @@ func showInfo(c *cli.Context) {
 	}
 
 	printRRDInfo(f)
+
+	if Debug {
+		fmt.Println(f.LowLevelDebugDump())
+	}
 }
 
 func showLast(c *cli.Context) {
