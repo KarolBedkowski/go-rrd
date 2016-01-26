@@ -103,6 +103,10 @@ func main() {
 					Value: "now",
 					Usage: "time stamp (in sec, date, N/now/NOW)",
 				},
+				cli.BoolFlag{
+					Name:  "include_invalid",
+					Usage: "include records with no data",
+				},
 			},
 			Action: getRangeValues,
 		},

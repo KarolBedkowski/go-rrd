@@ -423,7 +423,7 @@ func TestPutDataRR2(t *testing.T) {
 		}
 	}
 
-	if vls, err := r.GetRange(5, -1, []int{0}); err != nil {
+	if vls, err := r.GetRange(5, -1, []int{0}, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		if len(vls) != 10 {
@@ -578,7 +578,7 @@ func TestPutDataRR5(t *testing.T) {
 		}
 	}
 
-	if vls, err := r.GetRange(5, -1, []int{0}); err != nil {
+	if vls, err := r.GetRange(5, -1, []int{0}, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		if len(vls) != len(exp) {
@@ -682,7 +682,7 @@ func TestRange(t *testing.T) {
 	}
 
 	// get all - should use arch "a2"
-	if vls, err := r.GetRange(0, -1, []int{0}); err != nil {
+	if vls, err := r.GetRange(0, -1, []int{0}, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := [][]int{{0, 20}, {100, 150}, {200, 250}, {300, 300}, {400, 495}, {500, 500}}
@@ -700,7 +700,7 @@ func TestRange(t *testing.T) {
 	}
 
 	// get last - should use arch "a0"
-	if vls, err := r.GetRange(491, 500, []int{0}); err != nil {
+	if vls, err := r.GetRange(491, 500, []int{0}, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := [][]int{{495, 495}, {500, 500}}
@@ -719,7 +719,7 @@ func TestRange(t *testing.T) {
 	}
 
 	// a0
-	if vls, err := r.GetRange(491, -1, []int{0}); err != nil {
+	if vls, err := r.GetRange(491, -1, []int{0}, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := [][]int{{495, 495}, {500, 500}}
@@ -736,7 +736,7 @@ func TestRange(t *testing.T) {
 		}
 	}
 
-	if vls, err := r.GetRange(100, 300, []int{0}); err != nil {
+	if vls, err := r.GetRange(100, 300, []int{0}, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := [][]int{{100, 150}, {200, 250}, {300, 300}}

@@ -292,7 +292,7 @@ func (r *RRD) Last() (int64, error) {
 }
 
 // GetRange finds all records in given range
-func (r *RRD) GetRange(minTS, maxTS int64, columns []int) (Rows, error) {
+func (r *RRD) GetRange(minTS, maxTS int64, columns []int, includeInvalid bool) (Rows, error) {
 	LogDebug("RRD.GetRange minTS=%d, maxTS=%d, columns=%v", minTS, maxTS, columns)
 
 	r.mu.RLock()
@@ -329,6 +329,9 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int) (Rows, error) {
 
 	LogDebug("RRD.GetRange found %d records, sorting...", len(rows))
 	sort.Sort(rows)
+	if includeInvalid {
+		rows = fillData(aMinTS, aMaxTS, r.archives[archiveID].Step, rows)
+	}
 	return rows, err
 }
 
@@ -474,3 +477,30 @@ func (a *RRDArchive) calcTS(ts int64) (ats int64) {
 func (r Rows) Len() int           { return len(r) }
 func (r Rows) Swap(i, j int)      { r[i], r[j] = r[j], r[i] }
 func (r Rows) Less(i, j int) bool { return r[i].TS < r[j].TS }
+
+func fillData(minTS, maxTS, step int64, values Rows) Rows {
+	LogDebug("fillData minTS=%d, maxTS=%d, step=%d, valuescnd=%d", minTS, maxTS,
+		step, len(values))
+
+	var result Rows
+
+	if len(values) == 0 {
+		for ts := minTS; ts <= maxTS; ts = ts + step {
+			result = append(result, Row{TS: ts})
+		}
+		return result
+	}
+
+	ts := minTS
+	vidx := 0
+	for ts <= maxTS {
+		if vidx < len(values) && values[vidx].TS == ts {
+			result = append(result, values[vidx])
+			vidx++
+		} else {
+			result = append(result, Row{TS: ts})
+		}
+		ts += step
+	}
+	return result
+}

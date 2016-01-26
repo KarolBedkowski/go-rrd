@@ -30,9 +30,10 @@ Sample requests:
 type (
 	// QueryRequest query
 	QueryRequest struct {
-		Columns string `json:"columns,omitempty"`
-		Begin   string `json:"begin,omitempty"`
-		End     string `json:"end,omitempty"`
+		Columns        string `json:"columns,omitempty"`
+		Begin          string `json:"begin,omitempty"`
+		End            string `json:"end,omitempty"`
+		IncludeInvalid bool   `json:"include_invalid,omitempty"`
 	}
 
 	// QueryResponse for query
@@ -130,7 +131,7 @@ func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		Begin: tsMin,
 		End:   tsMax,
 	}
-	if rows, err := s.db.GetRange(tsMin, tsMax, columns); err == nil {
+	if rows, err := s.db.GetRange(tsMin, tsMax, columns, req.IncludeInvalid); err == nil {
 		for idx, row := range rows {
 			if idx == 0 {
 				for _, col := range row.Values {

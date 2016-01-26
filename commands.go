@@ -205,8 +205,9 @@ func getRangeValues(c *cli.Context) {
 	}
 
 	separator := c.GlobalString("separator")
+	includeInvalid := c.Bool("include_invalid")
 
-	if rows, err := f.GetRange(tsMin, tsMax, colsIDs); err == nil {
+	if rows, err := f.GetRange(tsMin, tsMax, colsIDs, includeInvalid); err == nil {
 		for _, row := range rows {
 			fmt.Print(timeFmt(row.TS), separator)
 			for _, col := range row.Values {
