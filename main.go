@@ -6,10 +6,13 @@ import (
 	"github.com/codegangsta/cli"
 )
 
+var AppVersion = "dev"
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "boom"
 	app.Usage = "RRD CLI tool"
+	app.Version = "0.0.1 (build:" + AppVersion + ")"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "filename, f",
