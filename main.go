@@ -181,6 +181,28 @@ func main() {
 			},
 			Action: modifyAddArchives,
 		},
+		{
+			Name:  "gen-random",
+			Usage: "fill archive with random data",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "begin, b",
+					Value: "",
+					Usage: "time stamp (in sec, date, N/now/NOW)",
+				},
+				cli.StringFlag{
+					Name:  "end, e",
+					Value: "now",
+					Usage: "time stamp (in sec, date, N/now/NOW)",
+				},
+				cli.IntFlag{
+					Name:  "step",
+					Value: 1,
+					Usage: "step [s]",
+				},
+			},
+			Action: genRandomData,
+		},
 	}
 	app.Run(os.Args)
 }

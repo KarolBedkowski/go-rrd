@@ -3,6 +3,7 @@ package main
 import (
 	//	"flag"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -392,6 +393,57 @@ func modifyAddArchives(c *cli.Context) {
 		Log("Done")
 	}
 }
+
+func genRandomData(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, _ := getFilenameParam(c)
+	tsMin := int64(0)
+	tsMinStr := c.String("begin")
+	if c.IsSet("begin") && tsMinStr != "" {
+		var ok bool
+		tsMin, ok = dateToTs(tsMinStr)
+		if !ok {
+			LogError("Parsing begin date error")
+		}
+	}
+	tsMaxStr := c.String("end")
+	if !c.IsSet("end") || tsMaxStr == "" {
+		tsMaxStr = "now"
+	}
+
+	tsMax, ok := dateToTs(tsMaxStr)
+	if !ok {
+		LogError("Parsing end date error")
+	}
+
+	step := int64(c.Int("step"))
+	if !c.IsSet("step") || step < 1 {
+		LogError("Invalid or missing step (--step)")
+	}
+
+	ExitWhenErrors()
+
+	f, err := OpenRRD(filename, false)
+	defer close(f)
+	if err != nil {
+		LogFatal("Open db error: %s", err.Error())
+	}
+
+	cols := f.allColumnsIDs()
+	for ts := tsMin; ts <= tsMax; ts = ts + step {
+		var values []Value
+		for _, c := range cols {
+			values = append(values, Value{TS: ts, Value: rand.Float32(), Valid: true, Column: c})
+		}
+		err = f.PutValues(values...)
+		if err != nil {
+			LogError("Put error: %s", err.Error())
+		}
+	}
+}
+
 var timeFormats = []string{
 	time.RFC822,
 	time.RFC822Z,
