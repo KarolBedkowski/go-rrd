@@ -550,6 +550,100 @@ func LoadDumpRRD(input, rrdFilename string) (*RRD, error) {
 	}
 	return r, err
 }
+
+func ModifyAddColumns(filename string, columns []RRDColumn) error {
+	r, err := OpenRRD(filename, true)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if r != nil {
+			r.Close()
+		}
+	}()
+
+	dstCols := r.columns
+	for cIdx, c := range columns {
+		for _, c2 := range dstCols {
+			if c2.Name == c.Name {
+				name := fmt.Sprintf("col%d", len(dstCols))
+				Log("Using %s name for new column %d (%s)", name, cIdx, c.Name)
+				c.Name = name
+				break
+			}
+		}
+		dstCols = append(dstCols, c)
+	}
+
+	nRRD, err := NewRRD(filename+".new", dstCols, r.archives)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if nRRD != nil {
+			nRRD.Close()
+		}
+	}()
+
+	if err := copyData(r, nRRD, nil, nil); err != nil {
+		return err
+	}
+
+	nRRD.Close()
+	nRRD = nil
+	r.Close()
+	r = nil
+
+	// delete old file
+	if err := os.Remove(filename); err != nil {
+		return err
+	}
+
+	// rename temp file
+	return os.Rename(filename+".new", filename)
+}
+
+func ModifyAddArchives(filename string, archs []RRDArchive) error {
+	r, err := OpenRRD(filename, true)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if r != nil {
+			r.Close()
+		}
+	}()
+
+	// TODO check names uniques
+
+	nRRD, err := NewRRD(filename+".new", r.columns, append(r.archives, archs...))
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if nRRD != nil {
+			nRRD.Close()
+		}
+	}()
+
+	if err := copyData(r, nRRD, nil, nil); err != nil {
+		return err
+	}
+
+	nRRD.Close()
+	nRRD = nil
+	r.Close()
+	r = nil
+
+	LogDebug("delete old file")
+	if err := os.Remove(filename); err != nil {
+		return err
+	}
+
+	LogDebug("rename temp file")
+	return os.Rename(filename+".new", filename)
+}
+
 func (a *RRDArchive) calcTS(ts int64) (ats int64) {
 	if ts < 1 {
 		return ts
@@ -593,4 +687,37 @@ func fillData(minTS, maxTS, step int64, values Rows, columns []int) Rows {
 		ts += step
 	}
 	return result
+}
+
+func copyData(src, dst *RRD, skipColumns []int, skipArchives []int) error {
+	LogDebug("copy data")
+	for aID, _ := range src.archives {
+		if InList(aID, skipArchives) {
+			continue
+		}
+
+		var cols []int
+		if len(skipColumns) > 0 {
+			for c := 0; c < len(src.columns); c++ {
+				if !InList(c, skipColumns) {
+					cols = append(cols, c)
+				}
+			}
+		} else {
+			cols = src.allColumnsIDs()
+		}
+
+		iter, _ := src.storage.Iterate(aID, 0, -1, cols)
+		for {
+			err := iter.Next()
+			if err == io.EOF {
+				break
+			}
+			values, _ := iter.Values()
+			if err = dst.storage.Put(aID, iter.TS(), values...); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

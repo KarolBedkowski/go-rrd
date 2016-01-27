@@ -47,3 +47,12 @@ func ExitWhenErrors() {
 		os.Exit(-1)
 	}
 }
+
+func InList(value int, list []int) bool {
+	for _, v := range list {
+		if v == value {
+			return true
+		}
+	}
+	return false
+}

@@ -157,6 +157,30 @@ func main() {
 			},
 			Action: loadData,
 		},
+		{
+			Name:  "add-columns",
+			Usage: "add new columns to rrd file",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "columns, c",
+					Value: "",
+					Usage: "columns definition in form: function[:col name],function[:col name],.... Functions: average/avg/sum/min/minimum/max/maximum/count/last",
+				},
+			},
+			Action: modifyAddColumns,
+		},
+		{
+			Name:  "add-archives",
+			Usage: "add new, empty archives to rrd file",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "archives, a",
+					Value: "",
+					Usage: "archives definitions in form: rows:step[:archive name],rows:step[:name]...",
+				},
+			},
+			Action: modifyAddArchives,
+		},
 	}
 	app.Run(os.Args)
 }

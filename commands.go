@@ -338,6 +338,60 @@ func loadData(c *cli.Context) {
 		Log("Done")
 	}
 }
+
+func modifyAddColumns(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+	cols := c.String("columns")
+	if !c.IsSet("columns") || cols == "" {
+		LogError("Missing columns definition (--columns)")
+	}
+
+	columns, err := parseColumnsDef(cols)
+	if err != nil {
+		LogError("Columns definition error: " + err.Error())
+	}
+
+	ExitWhenErrors()
+
+	if err := ModifyAddColumns(filename, columns); err != nil {
+		LogFatal("Error: %s", err.Error)
+	} else {
+		Log("Done")
+	}
+}
+
+func modifyAddArchives(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+
+	archivesDef := c.String("archives")
+	if !c.IsSet("archives") || archivesDef == "" {
+		LogError("Missing archives definition (--archives)")
+	}
+	archives, err := parseArchiveDef(archivesDef)
+	if err != nil {
+		LogError("Archives definition error: " + err.Error())
+	}
+
+	ExitWhenErrors()
+
+	if err := ModifyAddArchives(filename, archives); err != nil {
+		LogFatal("Error: %s", err.Error)
+	} else {
+		Log("Done")
+	}
+}
 var timeFormats = []string{
 	time.RFC822,
 	time.RFC822Z,
