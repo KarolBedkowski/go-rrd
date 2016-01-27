@@ -284,6 +284,60 @@ func startServer(c *cli.Context) {
 	server.Start()
 }
 
+func dumpData(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+
+	output := c.String("output")
+	if !c.IsSet("output") || output == "" {
+		LogError("Missing output file name (--output)")
+	}
+
+	ExitWhenErrors()
+
+	f, err := OpenRRD(filename, true)
+	defer close(f)
+	if err != nil {
+		LogFatal("Open db error: %s", err.Error())
+		return
+	}
+
+	if err := f.Dump(output); err != nil {
+		LogFatal("Error: %s", err.Error)
+	} else {
+		Log("Done")
+	}
+}
+
+func loadData(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+
+	input := c.String("input")
+	if !c.IsSet("input") || input == "" {
+		LogError("Missing input file name (--input)")
+	}
+
+	ExitWhenErrors()
+
+	f, err := LoadDumpRRD(input, filename)
+	defer close(f)
+	if err != nil {
+		LogFatal("Error: %s", err.Error)
+	} else {
+		Log("Done")
+	}
+}
 var timeFormats = []string{
 	time.RFC822,
 	time.RFC822Z,

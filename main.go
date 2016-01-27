@@ -133,6 +133,30 @@ func main() {
 			},
 			Action: startServer,
 		},
+		{
+			Name:  "dump",
+			Usage: "dump data to external file",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "output",
+					Value: "",
+					Usage: "output file name",
+				},
+			},
+			Action: dumpData,
+		},
+		{
+			Name:  "load",
+			Usage: "create rrd from dumped data",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "input",
+					Value: "",
+					Usage: "input file name",
+				},
+			},
+			Action: loadData,
+		},
 	}
 	app.Run(os.Args)
 }

@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -467,6 +470,86 @@ func (r *RRD) LowLevelDebugDump() string {
 	return strings.Join(res, "\n")
 }
 
+type (
+	RRDDump struct {
+		Columns  []RRDColumn
+		Archives []RRDArchive
+		Data     []RRDArchiveData
+	}
+	RRDArchiveData struct {
+		ArchiveID int
+		Rows      Rows
+	}
+)
+
+func (r *RRD) Dump(filename string) error {
+	LogDebug("RRD.Dump filename=%s", filename)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	data := RRDDump{
+		Columns:  r.columns,
+		Archives: r.archives,
+	}
+	for aID, _ := range r.archives {
+		iter, _ := r.storage.Iterate(aID, 0, -1, r.allColumnsIDs())
+		ad := RRDArchiveData{ArchiveID: aID}
+		for {
+			err := iter.Next()
+			if err == io.EOF {
+				break
+			}
+			row := Row{TS: iter.TS()}
+
+			values, _ := iter.Values()
+			for _, value := range values {
+				if value.Valid {
+					row.Values = append(row.Values, value)
+				}
+			}
+			ad.Rows = append(ad.Rows, row)
+		}
+		data.Data = append(data.Data, ad)
+	}
+	enc, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(filename, enc, 0660)
+}
+
+func LoadDumpRRD(input, rrdFilename string) (*RRD, error) {
+	LogDebug("LoadDumpRRD input=%s filename=%s", input, rrdFilename)
+
+	var dump RRDDump
+	data, err := ioutil.ReadFile(input)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(data, &dump); err != nil {
+		return nil, err
+	}
+
+	r, err := NewRRD(rrdFilename, dump.Columns, dump.Archives)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ad := range dump.Data {
+		for _, row := range ad.Rows {
+			var values []Value
+			for _, v := range row.Values {
+				v.Valid = true
+				values = append(values, v)
+			}
+			if err = r.storage.Put(ad.ArchiveID, row.TS, values...); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return r, err
+}
 func (a *RRDArchive) calcTS(ts int64) (ats int64) {
 	if ts < 1 {
 		return ts

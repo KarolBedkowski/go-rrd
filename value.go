@@ -6,12 +6,12 @@ import (
 
 // Value stricture holds single value in rrd
 type Value struct {
-	TS        int64 // not stored
-	Valid     bool  // int32
+	TS        int64 `json:"-"` // not stored
+	Valid     bool  `json:"-"` // int32
 	Value     float32
 	Counter   int64
 	Column    int // not stored
-	ArchiveID int // not stored -
+	ArchiveID int `json:"-"` // not stored -
 }
 
 func NewValue(ts int64, value float32) Value {
