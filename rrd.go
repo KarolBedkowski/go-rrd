@@ -330,7 +330,7 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int, includeInvalid bool) (
 	LogDebug("RRD.GetRange found %d records, sorting...", len(rows))
 	sort.Sort(rows)
 	if includeInvalid {
-		rows = fillData(aMinTS, aMaxTS, r.archives[archiveID].Step, rows)
+		rows = fillData(aMinTS, aMaxTS, r.archives[archiveID].Step, rows, columns)
 	}
 	return rows, err
 }
@@ -478,15 +478,22 @@ func (r Rows) Len() int           { return len(r) }
 func (r Rows) Swap(i, j int)      { r[i], r[j] = r[j], r[i] }
 func (r Rows) Less(i, j int) bool { return r[i].TS < r[j].TS }
 
-func fillData(minTS, maxTS, step int64, values Rows) Rows {
+func fillData(minTS, maxTS, step int64, values Rows, columns []int) Rows {
 	LogDebug("fillData minTS=%d, maxTS=%d, step=%d, valuescnd=%d", minTS, maxTS,
 		step, len(values))
 
 	var result Rows
+	emptyRowValues := make([]Value, 0, len(columns))
+	for _, c := range columns {
+		emptyRowValues = append(emptyRowValues, Value{
+			Valid:  false,
+			Column: c,
+		})
+	}
 
 	if len(values) == 0 {
 		for ts := minTS; ts <= maxTS; ts = ts + step {
-			result = append(result, Row{TS: ts})
+			result = append(result, Row{TS: ts, Values: emptyRowValues})
 		}
 		return result
 	}
@@ -498,7 +505,7 @@ func fillData(minTS, maxTS, step int64, values Rows) Rows {
 			result = append(result, values[vidx])
 			vidx++
 		} else {
-			result = append(result, Row{TS: ts})
+			result = append(result, Row{TS: ts, Values: emptyRowValues})
 		}
 		ts += step
 	}

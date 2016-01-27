@@ -498,7 +498,6 @@ func TestPutDataRR3(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 func TestPutDataRR4(t *testing.T) {
@@ -737,6 +736,69 @@ func TestRange(t *testing.T) {
 	}
 
 	if vls, err := r.GetRange(100, 300, []int{0}, false); err != nil {
+		t.Errorf("GetRange error: %s", err.Error())
+	} else {
+		exp := [][]int{{100, 150}, {200, 250}, {300, 300}}
+		if len(vls) != len(exp) {
+			t.Errorf("wrong result len: %v", vls)
+			t.Log("dump ", r.LowLevelDebugDump())
+		}
+		for i, e := range exp {
+			v := vls[i].Values[0]
+			for _, err := range checkValue(v, float32(e[1]), int64(e[0]), true, 2, 0) {
+				t.Error(err)
+				t.Logf("dump: %s", r.LowLevelDebugDump())
+			}
+		}
+	}
+}
+
+func TestRangeIncludeInvalid(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+
+	// sample data
+	testV := []int{1, 5, 10, 20, 100, 150, 200, 250, 300, 400, 450, 490, 495, 500}
+	if errors := putTestDataInts(r, testV, 0); len(errors) > 0 {
+		t.Errorf("Put data error: %v", errors)
+		return
+	}
+
+	// get last - should use arch "a0"
+	if vls, err := r.GetRange(491, 500, []int{0}, true); err != nil {
+		t.Errorf("GetRange error: %s", err.Error())
+	} else {
+		exp := []int{491, 492, 493, 494, 495, 496, 497, 498, 499, 500}
+
+		if len(vls) != len(exp) {
+			t.Errorf("wrong result len: %v", vls)
+			t.Log("dump ", r.LowLevelDebugDump())
+		}
+		for i, e := range exp {
+			if vls[i].TS != int64(e) {
+				t.Errorf("missing ts=%d\n", e)
+				t.Logf("dump: %s", r.LowLevelDebugDump())
+			}
+			if e == 450 || e == 490 || e == 495 || e == 500 {
+				v := vls[i].Values[0]
+				for _, err := range checkValue(v, float32(e), int64(e), true, 0, 0) {
+					t.Error(err)
+					t.Logf("dump: %s", r.LowLevelDebugDump())
+				}
+			} else {
+				if len(vls[i].Values) > 0 {
+					for _, vv := range vls[i].Values {
+						if vv.Valid {
+							t.Errorf("found some values when not expected: %#v\n", vls)
+							t.Logf("dump: %s", r.LowLevelDebugDump())
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if vls, err := r.GetRange(100, 350, []int{0}, true); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := [][]int{{100, 150}, {200, 250}, {300, 300}}
