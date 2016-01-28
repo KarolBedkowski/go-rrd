@@ -363,6 +363,29 @@ func modifyAddColumns(c *cli.Context) {
 
 	if err := ModifyAddColumns(filename, columns); err != nil {
 		LogFatal("Error: %s", err.Error)
+
+func modifyDelColumns(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+	cols := c.String("columns")
+	if !c.IsSet("columns") || cols == "" {
+		LogError("Missing columns to delete (--columns)")
+	}
+
+	columns, err := parseStrIntList(cols)
+	if err != nil {
+		LogError("Columns definition error: " + err.Error())
+	}
+
+	ExitWhenErrors()
+
+	if err := ModifyDelColumns(filename, columns); err != nil {
+		LogFatal("Error: %s", err.Error())
 	} else {
 		Log("Done")
 	}
@@ -390,6 +413,28 @@ func modifyAddArchives(c *cli.Context) {
 
 	if err := ModifyAddArchives(filename, archives); err != nil {
 		LogFatal("Error: %s", err.Error)
+func modifyDelArchives(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+
+	archivesDef := c.String("archives")
+	if !c.IsSet("archives") || archivesDef == "" {
+		LogError("Missing archives list (--archives)")
+	}
+	archives, err := parseStrIntList(archivesDef)
+	if err != nil {
+		LogError("Archives definition error: " + err.Error())
+	}
+
+	ExitWhenErrors()
+
+	if err := ModifyDelArchives(filename, archives); err != nil {
+		LogFatal("Error: %s", err.Error())
 	} else {
 		Log("Done")
 	}

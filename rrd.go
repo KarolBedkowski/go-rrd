@@ -617,6 +617,52 @@ func ModifyAddColumns(filename string, columns []RRDColumn) error {
 	return os.Rename(filename+".new", filename)
 }
 
+func ModifyDelColumns(filename string, columns []int) error {
+	r, err := OpenRRD(filename, true)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if r != nil {
+			r.Close()
+		}
+	}()
+
+	var dstCols []RRDColumn
+	for cIdx, c := range r.columns {
+		if !InList(cIdx, columns) {
+			dstCols = append(dstCols, c)
+		}
+	}
+
+	nRRD, err := NewRRD(filename+".new", dstCols, r.archives)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if nRRD != nil {
+			nRRD.Close()
+		}
+	}()
+
+	if err := copyData(r, nRRD, columns, nil); err != nil {
+		return err
+	}
+
+	nRRD.Close()
+	nRRD = nil
+	r.Close()
+	r = nil
+
+	// delete old file
+	if err := os.Remove(filename); err != nil {
+		return err
+	}
+
+	// rename temp file
+	return os.Rename(filename+".new", filename)
+}
+
 func ModifyAddArchives(filename string, archs []RRDArchive) error {
 	r, err := OpenRRD(filename, true)
 	if err != nil {
@@ -641,6 +687,52 @@ func ModifyAddArchives(filename string, archs []RRDArchive) error {
 	}()
 
 	if err := copyData(r, nRRD, nil, nil); err != nil {
+		return err
+	}
+
+	nRRD.Close()
+	nRRD = nil
+	r.Close()
+	r = nil
+
+	LogDebug("delete old file")
+	if err := os.Remove(filename); err != nil {
+		return err
+	}
+
+	LogDebug("rename temp file")
+	return os.Rename(filename+".new", filename)
+}
+
+func ModifyDelArchives(filename string, archs []int) error {
+	r, err := OpenRRD(filename, true)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if r != nil {
+			r.Close()
+		}
+	}()
+
+	var dstArchs []RRDArchive
+	for aIdx, a := range r.archives {
+		if !InList(aIdx, archs) {
+			dstArchs = append(dstArchs, a)
+		}
+	}
+
+	nRRD, err := NewRRD(filename+".new", r.columns, dstArchs)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if nRRD != nil {
+			nRRD.Close()
+		}
+	}()
+
+	if err := copyData(r, nRRD, nil, archs); err != nil {
 		return err
 	}
 
@@ -705,20 +797,24 @@ func fillData(minTS, maxTS, step int64, values Rows, columns []int) Rows {
 
 func copyData(src, dst *RRD, skipColumns []int, skipArchives []int) error {
 	LogDebug("copy data")
+	var cols []int
+	var colsMap map[int]int
+	if len(skipColumns) > 0 {
+		colsMap = make(map[int]int)
+		for c := 0; c < len(src.columns); c++ {
+			if !InList(c, skipColumns) {
+				colsMap[c] = len(cols)
+				cols = append(cols, c)
+			}
+		}
+	} else {
+		cols = src.allColumnsIDs()
+	}
+
+	dstAID := 0
 	for aID, _ := range src.archives {
 		if InList(aID, skipArchives) {
 			continue
-		}
-
-		var cols []int
-		if len(skipColumns) > 0 {
-			for c := 0; c < len(src.columns); c++ {
-				if !InList(c, skipColumns) {
-					cols = append(cols, c)
-				}
-			}
-		} else {
-			cols = src.allColumnsIDs()
 		}
 
 		iter, _ := src.storage.Iterate(aID, 0, -1, cols)
@@ -728,10 +824,19 @@ func copyData(src, dst *RRD, skipColumns []int, skipArchives []int) error {
 				break
 			}
 			values, _ := iter.Values()
-			if err = dst.storage.Put(aID, iter.TS(), values...); err != nil {
+			if colsMap != nil {
+				var vOut []Value
+				for _, v := range values {
+					v.Column = colsMap[v.Column]
+					vOut = append(vOut, v)
+				}
+				values = vOut
+			}
+			if err = dst.storage.Put(dstAID, iter.TS(), values...); err != nil {
 				return err
 			}
 		}
+		dstAID++
 	}
 	return nil
 }

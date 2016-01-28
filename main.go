@@ -177,6 +177,18 @@ func main() {
 			Action: modifyAddColumns,
 		},
 		{
+			Name:  "del-columns",
+			Usage: "remove columns from rrd file",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "columns, c",
+					Value: "",
+					Usage: "column indexes",
+				},
+			},
+			Action: modifyDelColumns,
+		},
+		{
 			Name:  "add-archives",
 			Usage: "add new, empty archives to rrd file",
 			Flags: []cli.Flag{
@@ -187,6 +199,18 @@ func main() {
 				},
 			},
 			Action: modifyAddArchives,
+		},
+		{
+			Name:  "del-archives",
+			Usage: "remove archives from rrd file",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "archives, a",
+					Value: "",
+					Usage: "archive indexes",
+				},
+			},
+			Action: modifyDelArchives,
 		},
 		{
 			Name:  "gen-random",
