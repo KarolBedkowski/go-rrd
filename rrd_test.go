@@ -423,7 +423,7 @@ func TestPutDataRR2(t *testing.T) {
 		}
 	}
 
-	if vls, err := r.GetRange(5, -1, []int{0}, false); err != nil {
+	if vls, err := r.GetRange(5, -1, []int{0}, false, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		if len(vls) != 10 {
@@ -577,7 +577,7 @@ func TestPutDataRR5(t *testing.T) {
 		}
 	}
 
-	if vls, err := r.GetRange(5, -1, []int{0}, false); err != nil {
+	if vls, err := r.GetRange(5, -1, []int{0}, false, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		if len(vls) != len(exp) {
@@ -656,15 +656,17 @@ func TestRangeFindArchive(t *testing.T) {
 		return
 	}
 
-	if aID, min, max := r.findArchiveForRange(0, 8000); aID != 2 || min != 0 || max != 8000 {
+	last, _ := r.Last()
+
+	if aID, min, max := r.findArchiveForRange(0, 8000, last); aID != 2 || min != 0 || max != 8000 {
 		t.Errorf("wrong archive; expected 2: %d, min=%d, max=%d", aID, min, max)
 	}
 
-	if aID, min, max := r.findArchiveForRange(420, 500); aID != 1 || min != 420 || max != 500 {
+	if aID, min, max := r.findArchiveForRange(420, 500, last); aID != 1 || min != 420 || max != 500 {
 		t.Errorf("wrong archive; expected 1: %d, min=%d, max=%d", aID, min, max)
 	}
 
-	if aID, min, max := r.findArchiveForRange(491, 500); aID != 0 || min != 491 || max != 500 {
+	if aID, min, max := r.findArchiveForRange(491, 500, last); aID != 0 || min != 491 || max != 500 {
 		t.Errorf("wrong archive; expected 0: %d, min=%d, max=%d", aID, min, max)
 	}
 }
@@ -681,7 +683,7 @@ func TestRange(t *testing.T) {
 	}
 
 	// get all - should use arch "a2"
-	if vls, err := r.GetRange(0, -1, []int{0}, false); err != nil {
+	if vls, err := r.GetRange(0, -1, []int{0}, false, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := [][]int{{0, 20}, {100, 150}, {200, 250}, {300, 300}, {400, 495}, {500, 500}}
@@ -699,7 +701,7 @@ func TestRange(t *testing.T) {
 	}
 
 	// get last - should use arch "a0"
-	if vls, err := r.GetRange(491, 500, []int{0}, false); err != nil {
+	if vls, err := r.GetRange(491, 500, []int{0}, false, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := [][]int{{495, 495}, {500, 500}}
@@ -718,7 +720,7 @@ func TestRange(t *testing.T) {
 	}
 
 	// a0
-	if vls, err := r.GetRange(491, -1, []int{0}, false); err != nil {
+	if vls, err := r.GetRange(491, -1, []int{0}, false, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := [][]int{{495, 495}, {500, 500}}
@@ -735,7 +737,7 @@ func TestRange(t *testing.T) {
 		}
 	}
 
-	if vls, err := r.GetRange(100, 300, []int{0}, false); err != nil {
+	if vls, err := r.GetRange(100, 300, []int{0}, false, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := [][]int{{100, 150}, {200, 250}, {300, 300}}
@@ -765,7 +767,7 @@ func TestRangeIncludeInvalid(t *testing.T) {
 	}
 
 	// get last - should use arch "a0"
-	if vls, err := r.GetRange(491, 500, []int{0}, true); err != nil {
+	if vls, err := r.GetRange(491, 500, []int{0}, true, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := []int{491, 492, 493, 494, 495, 496, 497, 498, 499, 500}
@@ -798,7 +800,7 @@ func TestRangeIncludeInvalid(t *testing.T) {
 		}
 	}
 
-	if vls, err := r.GetRange(100, 350, []int{0}, true); err != nil {
+	if vls, err := r.GetRange(100, 350, []int{0}, true, false); err != nil {
 		t.Errorf("GetRange error: %s", err.Error())
 	} else {
 		exp := [][]int{{100, 150}, {200, 250}, {300, 300}}

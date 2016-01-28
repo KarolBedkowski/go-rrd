@@ -37,6 +37,10 @@ func main() {
 			Name:  "debug, d",
 			Usage: "display debug informations",
 		},
+		cli.BoolFlag{
+			Name:  "no-rt",
+			Usage: "TS is not real time",
+		},
 	}
 	app.Commands = []cli.Command{
 		{

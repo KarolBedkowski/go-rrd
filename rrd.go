@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 type (
@@ -300,7 +301,7 @@ func (r *RRD) last() (int64, error) {
 }
 
 // GetRange finds all records in given range
-func (r *RRD) GetRange(minTS, maxTS int64, columns []int, includeInvalid bool) (Rows, error) {
+func (r *RRD) GetRange(minTS, maxTS int64, columns []int, includeInvalid bool, realTime bool) (Rows, error) {
 	LogDebug("RRD.GetRange minTS=%d, maxTS=%d, columns=%v", minTS, maxTS, columns)
 
 	r.mu.RLock()
@@ -311,7 +312,18 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int, includeInvalid bool) (
 		columns = r.allColumnsIDs()
 	}
 
-	archiveID, aMinTS, aMaxTS := r.findArchiveForRange(minTS, maxTS)
+	var last int64
+	if realTime {
+		last = time.Now().Unix()
+	} else {
+		var err error
+		last, err = r.last()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	archiveID, aMinTS, aMaxTS := r.findArchiveForRange(minTS, maxTS, last)
 	LogDebug("RRD.GetRange archive: using archive=%d, aMinTS=%d, aMaxTS=%d", archiveID, aMinTS, aMaxTS)
 
 	i, err := r.storage.Iterate(archiveID, aMinTS, aMaxTS, columns)
@@ -343,12 +355,9 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int, includeInvalid bool) (
 	return rows, err
 }
 
-func (r *RRD) findArchiveForRange(minTS, maxTS int64) (archiveID int, aMinTS, aMaxTS int64) {
+func (r *RRD) findArchiveForRange(minTS, maxTS, last int64) (archiveID int, aMinTS, aMaxTS int64) {
 	LogDebug("RRD.findArchiveForRange minTS=%d, maxTS=%d", minTS, maxTS)
-	last, err := r.Last()
-	if err != nil {
-		return 0, 0, -1
-	}
+
 	for aID, a := range r.archives {
 		archiveID = aID
 		// archive range

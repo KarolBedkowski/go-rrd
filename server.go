@@ -131,7 +131,7 @@ func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		Begin: tsMin,
 		End:   tsMax,
 	}
-	if rows, err := s.db.GetRange(tsMin, tsMax, columns, req.IncludeInvalid); err == nil {
+	if rows, err := s.db.GetRange(tsMin, tsMax, columns, req.IncludeInvalid, true); err == nil {
 		for idx, row := range rows {
 			if idx == 0 {
 				for _, col := range row.Values {
