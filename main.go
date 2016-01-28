@@ -114,6 +114,10 @@ func main() {
 					Name:  "include_invalid",
 					Usage: "include records with no data",
 				},
+				cli.BoolFlag{
+					Name:  "separate-valid-groups",
+					Usage: "put blank line instead of invalid row (for non-continuous gnuplot graphs)",
+				},
 			},
 			Action: getRangeValues,
 		},

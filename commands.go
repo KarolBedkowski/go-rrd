@@ -208,17 +208,28 @@ func getRangeValues(c *cli.Context) {
 	separator := c.GlobalString("separator")
 	includeInvalid := c.Bool("include_invalid")
 	noRealTime := c.GlobalBool("no-rt")
+	separate := c.Bool("separate-valid-groups")
 
 	if rows, err := f.GetRange(tsMin, tsMax, colsIDs, includeInvalid, !noRealTime); err == nil {
+		prevValid := true
 		for _, row := range rows {
-			fmt.Print(timeFmt(row.TS), separator)
+			valid := false
+			outp := timeFmt(row.TS) + separator
 			for _, col := range row.Values {
 				if col.Valid {
-					fmt.Printf("%f", col.Value)
+					outp += fmt.Sprintf("%f", col.Value)
+					valid = true
 				}
-				fmt.Print(separator)
+				outp += separator
 			}
-			fmt.Print("\n")
+			if separate && !valid {
+				if prevValid {
+					fmt.Print("\n")
+				}
+			} else {
+				fmt.Println(outp)
+			}
+			prevValid = valid
 		}
 	} else {
 		LogFatal("Error: %s", err.Error())
