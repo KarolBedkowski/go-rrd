@@ -310,7 +310,7 @@ func dumpData(c *cli.Context) {
 	}
 
 	if err := f.Dump(output); err != nil {
-		LogFatal("Error: %s", err.Error)
+		LogFatal("Error: %s", err.Error())
 	} else {
 		Log("Done")
 	}
@@ -335,7 +335,7 @@ func loadData(c *cli.Context) {
 	f, err := LoadDumpRRD(input, filename)
 	defer close(f)
 	if err != nil {
-		LogFatal("Error: %s", err.Error)
+		LogFatal("Error: %s", err.Error())
 	} else {
 		Log("Done")
 	}
@@ -362,7 +362,11 @@ func modifyAddColumns(c *cli.Context) {
 	ExitWhenErrors()
 
 	if err := ModifyAddColumns(filename, columns); err != nil {
-		LogFatal("Error: %s", err.Error)
+		LogFatal("Error: %s", err.Error())
+	} else {
+		Log("Done")
+	}
+}
 
 func modifyDelColumns(c *cli.Context) {
 	if !processGlobalArgs(c) {
@@ -412,7 +416,12 @@ func modifyAddArchives(c *cli.Context) {
 	ExitWhenErrors()
 
 	if err := ModifyAddArchives(filename, archives); err != nil {
-		LogFatal("Error: %s", err.Error)
+		LogFatal("Error: %s", err.Error())
+	} else {
+		Log("Done")
+	}
+}
+
 func modifyDelArchives(c *cli.Context) {
 	if !processGlobalArgs(c) {
 		return
@@ -618,7 +627,7 @@ func printRRDInfo(f *RRD) {
 			fmt.Printf(" - Name: %s\n", a.Name)
 			fmt.Printf("   Rows: %d\n", a.Rows)
 			fmt.Printf("   Step: %d\n", a.Step)
-			fmt.Printf("   TS range: %d - %d (%s-%s)\n", a.MinTS, a.MaxTS,
+			fmt.Printf("   TS range: %d - %d (%s - %s)\n", a.MinTS, a.MaxTS,
 				time.Unix(a.MinTS, 0).String(), time.Unix(a.MaxTS, 0).String())
 			fmt.Printf("   Used rows: %d (%0.1f%%)\n", a.UsedRows,
 				100.0*float32(a.UsedRows)/float32(a.Rows))
