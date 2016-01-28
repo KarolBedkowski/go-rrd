@@ -6,6 +6,7 @@ import (
 	"github.com/codegangsta/cli"
 )
 
+// AppVersion is application version
 var AppVersion = "dev"
 
 func main() {

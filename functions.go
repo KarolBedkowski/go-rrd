@@ -3,11 +3,17 @@ package main
 import "strings"
 
 const (
+	// FAverage average values in step
 	FAverage Function = iota
+	// FMaximum keep greatest value
 	FMaximum
+	// FMinimum keep minimal value
 	FMinimum
+	// FSum sum all values in step
 	FSum
+	// FCount keep count of values in step
 	FCount
+	// FLast keep last value in step
 	FLast
 )
 

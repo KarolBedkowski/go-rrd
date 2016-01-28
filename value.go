@@ -14,6 +14,7 @@ type Value struct {
 	ArchiveID int `json:"-"` // not stored -
 }
 
+// NewValue create new Value structure
 func NewValue(ts int64, value float32) Value {
 	return Value{
 		TS:      ts,

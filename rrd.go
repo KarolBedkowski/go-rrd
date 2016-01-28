@@ -133,6 +133,7 @@ func (r *RRD) Close() error {
 	return r.storage.Close()
 }
 
+// Flush data to disk
 func (r *RRD) Flush() {
 	LogDebug("RRD.Close")
 	r.mu.Lock()
@@ -149,6 +150,7 @@ func (r *RRD) String() string {
 		r.filename, r.readonly, r.columns, r.archives)
 }
 
+// ColumnName return column name by index
 func (r *RRD) ColumnName(col int) string {
 	return r.columns[col].Name
 }
@@ -485,17 +487,20 @@ func (r *RRD) LowLevelDebugDump() string {
 }
 
 type (
+	// RRDDump is structure dumped to json-file
 	RRDDump struct {
 		Columns  []RRDColumn
 		Archives []RRDArchive
 		Data     []RRDArchiveData
 	}
+	// RRDArchiveData keep data in dump file for each archive
 	RRDArchiveData struct {
 		ArchiveID int
 		Rows      Rows
 	}
 )
 
+// Dump content of rrd file into json-encoded file
 func (r *RRD) Dump(filename string) error {
 	LogDebug("RRD.Dump filename=%s", filename)
 	r.mu.RLock()
@@ -505,7 +510,7 @@ func (r *RRD) Dump(filename string) error {
 		Columns:  r.columns,
 		Archives: r.archives,
 	}
-	for aID, _ := range r.archives {
+	for aID := range r.archives {
 		iter, _ := r.storage.Iterate(aID, 0, -1, r.allColumnsIDs())
 		ad := RRDArchiveData{ArchiveID: aID}
 		for {
@@ -532,6 +537,7 @@ func (r *RRD) Dump(filename string) error {
 	return ioutil.WriteFile(filename, enc, 0660)
 }
 
+// LoadDumpRRD load json-encoded file into new rrd file
 func LoadDumpRRD(input, rrdFilename string) (*RRD, error) {
 	LogDebug("LoadDumpRRD input=%s filename=%s", input, rrdFilename)
 
@@ -565,6 +571,7 @@ func LoadDumpRRD(input, rrdFilename string) (*RRD, error) {
 	return r, err
 }
 
+// ModifyAddColumns add new columns to existing rrd file
 func ModifyAddColumns(filename string, columns []RRDColumn) error {
 	r, err := OpenRRD(filename, true)
 	if err != nil {
@@ -617,6 +624,7 @@ func ModifyAddColumns(filename string, columns []RRDColumn) error {
 	return os.Rename(filename+".new", filename)
 }
 
+// ModifyDelColumns delete given columns (and data) from rrd file
 func ModifyDelColumns(filename string, columns []int) error {
 	r, err := OpenRRD(filename, true)
 	if err != nil {
@@ -663,6 +671,7 @@ func ModifyDelColumns(filename string, columns []int) error {
 	return os.Rename(filename+".new", filename)
 }
 
+// ModifyAddArchives add new archives to rrd file
 func ModifyAddArchives(filename string, archs []RRDArchive) error {
 	r, err := OpenRRD(filename, true)
 	if err != nil {
@@ -704,6 +713,7 @@ func ModifyAddArchives(filename string, archs []RRDArchive) error {
 	return os.Rename(filename+".new", filename)
 }
 
+// ModifyDelArchives delete given archives (and data) from rrd file
 func ModifyDelArchives(filename string, archs []int) error {
 	r, err := OpenRRD(filename, true)
 	if err != nil {
@@ -812,7 +822,7 @@ func copyData(src, dst *RRD, skipColumns []int, skipArchives []int) error {
 	}
 
 	dstAID := 0
-	for aID, _ := range src.archives {
+	for aID := range src.archives {
 		if InList(aID, skipArchives) {
 			continue
 		}

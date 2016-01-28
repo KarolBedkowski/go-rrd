@@ -227,6 +227,7 @@ func (b *BinaryFileStorage) Close() error {
 	return err
 }
 
+// Flush data to disk
 func (b *BinaryFileStorage) Flush() {
 	b.mu.Lock()
 	defer b.mu.Unlock()

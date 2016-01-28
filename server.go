@@ -44,11 +44,13 @@ type (
 		Data    [][]float32 `json:"data"`
 	}
 
+	// PutValue is one value to put with PutRequest
 	PutValue struct {
 		Column string  `json:"column,omitempty"`
 		Value  float32 `json:"value"`
 	}
 
+	// PutRequest - data for put request
 	PutRequest struct {
 		TS     string     `json:"ts,omitempty"`
 		Values []PutValue `json:"values"`
