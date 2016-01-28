@@ -269,6 +269,11 @@ func (r *RRD) Last() (int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	return r.last()
+}
+
+// Last return last timestamp from db
+func (r *RRD) last() (int64, error) {
 	var last int64 = -1
 	i, err := r.storage.Iterate(0, 0, -1, nil)
 	if err != nil {
