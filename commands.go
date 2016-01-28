@@ -206,7 +206,7 @@ func getRangeValues(c *cli.Context) {
 	}
 
 	separator := c.GlobalString("separator")
-	includeInvalid := c.Bool("include_invalid")
+	includeInvalid := c.Bool("include-invalid")
 	noRealTime := c.GlobalBool("no-rt")
 	separate := c.Bool("separate-valid-groups")
 

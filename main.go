@@ -111,7 +111,7 @@ func main() {
 					Usage: "time stamp (in sec, date, N/now/NOW)",
 				},
 				cli.BoolFlag{
-					Name:  "include_invalid",
+					Name:  "include-invalid",
 					Usage: "include records with no data",
 				},
 				cli.BoolFlag{
