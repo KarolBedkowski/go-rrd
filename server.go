@@ -158,7 +158,7 @@ func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusFound)
+	w.WriteHeader(http.StatusOK)
 	w.Write(j)
 }
 
@@ -210,6 +210,6 @@ func (s *Server) putHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.db.Flush()
 
-	w.WriteHeader(http.StatusFound)
+	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
 }
