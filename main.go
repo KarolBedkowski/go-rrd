@@ -119,6 +119,11 @@ func main() {
 					Name:  "separate-valid-groups",
 					Usage: "put blank line instead of invalid row (for non-continuous gnuplot graphs)",
 				},
+				cli.StringFlag{
+					Name:  "columns, c",
+					Value: "",
+					Usage: "optional columns to retrieve",
+				},
 			},
 			Action: getRangeValues,
 		},
