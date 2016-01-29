@@ -223,6 +223,22 @@ func main() {
 			Action: modifyDelArchives,
 		},
 		{
+			Name:  "resize-archive",
+			Usage: "change number of rows in archive",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "archive, a",
+					Value: "",
+					Usage: "archive to change",
+				},
+				cli.IntFlag{
+					Name:  "rows, r",
+					Usage: "number of rows",
+				},
+			},
+			Action: modifyResizeArchive,
+		},
+		{
 			Name:  "gen-random",
 			Usage: "fill archive with random data",
 			Flags: []cli.Flag{

@@ -460,6 +460,38 @@ func modifyDelArchives(c *cli.Context) {
 	}
 }
 
+func modifyResizeArchive(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+
+	archivesDef := c.String("archive")
+	if !c.IsSet("archive") || archivesDef == "" {
+		LogError("Missing archive (--archive)")
+	}
+	archives, err := parseStrIntList(archivesDef)
+	if err != nil {
+		LogError("Archives definition error: " + err.Error())
+	}
+
+	rows := c.Int("rows")
+	if rows < 1 {
+		LogError("Invalid number of rows (--rows)")
+	}
+
+	ExitWhenErrors()
+
+	if err := ModifyResizeArchive(filename, archives[0], rows); err != nil {
+		LogFatal("Error: %s", err.Error())
+	} else {
+		Log("Done")
+	}
+}
+
 func genRandomData(c *cli.Context) {
 	if !processGlobalArgs(c) {
 		return

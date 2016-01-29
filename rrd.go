@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -743,6 +744,59 @@ func ModifyDelArchives(filename string, archs []int) error {
 	}()
 
 	if err := copyData(r, nRRD, nil, archs); err != nil {
+		return err
+	}
+
+	nRRD.Close()
+	nRRD = nil
+	r.Close()
+	r = nil
+
+	LogDebug("delete old file")
+	if err := os.Remove(filename); err != nil {
+		return err
+	}
+
+	LogDebug("rename temp file")
+	return os.Rename(filename+".new", filename)
+}
+
+// ModifyResizeArchive change number of rows in archive
+func ModifyResizeArchive(filename string, archiveID int, rows int) error {
+	r, err := OpenRRD(filename, true)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if r != nil {
+			r.Close()
+		}
+	}()
+
+	if len(r.archives) < archiveID-1 {
+		return errors.New("Invalid archive number")
+	}
+
+	if r.archives[archiveID].Rows == int32(rows) {
+		return errors.New("Rows number not changed")
+	}
+
+	dst := r.archives[:]
+	arch := dst[archiveID]
+	arch.Rows = int32(rows)
+	dst[archiveID] = arch
+
+	nRRD, err := NewRRD(filename+".new", r.columns, dst)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if nRRD != nil {
+			nRRD.Close()
+		}
+	}()
+
+	if err := copyData(r, nRRD, nil, nil); err != nil {
 		return err
 	}
 
