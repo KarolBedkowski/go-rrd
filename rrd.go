@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -335,6 +334,10 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int, includeInvalid bool, r
 	}
 
 	var rows Rows
+	var rows1, rows2 Rows
+	lastTS := int64(-1)
+	// read first part
+	putIn1 := true
 	for {
 		err := i.Next()
 		if err != nil {
@@ -347,11 +350,28 @@ func (r *RRD) GetRange(minTS, maxTS int64, columns []int, includeInvalid bool, r
 		if err != nil {
 			return nil, err
 		}
-		rows = append(rows, Row{i.TS(), values})
+		if i.TS() < lastTS {
+			// we found lower values - after last inserted values, so all next rows should be inserted
+			// on beginning
+			putIn1 = false
+		}
+		lastTS = i.TS()
+		if putIn1 {
+			rows1 = append(rows1, Row{i.TS(), values})
+		} else {
+			rows2 = append(rows2, Row{i.TS(), values})
+		}
 	}
 
-	LogDebug("RRD.GetRange found %d records, sorting...", len(rows))
-	sort.Sort(rows)
+	LogDebug("RRD.GetRange found %d + %d records", len(rows1), len(rows2))
+	if len(rows1) > 0 {
+		if len(rows2) > 0 {
+			rows = append(rows2, rows1...)
+		} else {
+			rows = rows1
+		}
+	}
+
 	if includeInvalid {
 		rows = fillData(aMinTS, aMaxTS, r.archives[archiveID].Step, rows, columns)
 	}
