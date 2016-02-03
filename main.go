@@ -38,6 +38,10 @@ func main() {
 			Name:  "debug, d",
 			Usage: "display debug informations",
 		},
+		cli.IntFlag{
+			Name:  "debug-level, D",
+			Usage: "debug level (0-2)",
+		},
 		cli.BoolFlag{
 			Name:  "no-rt",
 			Usage: "TS is not real time",

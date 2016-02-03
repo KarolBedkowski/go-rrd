@@ -6,14 +6,22 @@ import (
 )
 
 var (
-	// Debug is true when application is started in debug mode (--debug)
-	Debug     = false
+	// Debug level when application is started in debug mode (--debug, --debug-level)
+	Debug     = 0
 	errorsCnt int
 )
 
 // LogDebug display debugging information on stderr
 func LogDebug(format string, a ...interface{}) {
-	if Debug {
+	if Debug > 0 {
+		fmt.Fprintf(os.Stderr, format, a...)
+		fmt.Fprintln(os.Stderr)
+	}
+}
+
+// LogDebug2 display debugging information on stderr when debug-level >= 2
+func LogDebug2(format string, a ...interface{}) {
+	if Debug > 1 {
 		fmt.Fprintf(os.Stderr, format, a...)
 		fmt.Fprintln(os.Stderr)
 	}

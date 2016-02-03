@@ -253,7 +253,7 @@ func showInfo(c *cli.Context) {
 
 	printRRDInfo(f)
 
-	if Debug {
+	if Debug > 1 {
 		fmt.Println(f.LowLevelDebugDump())
 	}
 }
@@ -688,7 +688,12 @@ func printRRDInfo(f *RRD) {
 }
 
 func processGlobalArgs(c *cli.Context) (ok bool) {
-	Debug = c.GlobalBool("debug")
+	if c.GlobalIsSet("debug-level") {
+		Debug = c.GlobalInt("debug-level")
+	}
+	if c.GlobalBool("debug") && Debug <= 0 {
+		Debug = 1
+	}
 	return true
 }
 

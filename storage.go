@@ -262,7 +262,7 @@ func (b *BinaryFileStorage) Put(archive int, ts int64, values ...Value) error {
 		return err
 	}
 
-	LogDebug("BFS.Put writing values")
+	LogDebug2("BFS.Put writing values")
 	for _, v := range values {
 		if _, err := b.f.Seek(rowOffset+8+int64(valueSize*v.Column), 0); err != nil {
 			return err
@@ -270,7 +270,7 @@ func (b *BinaryFileStorage) Put(archive int, ts int64, values ...Value) error {
 		writeValue(b.f, v)
 	}
 
-	LogDebug("BFS.Put done")
+	LogDebug2("BFS.Put done")
 	return nil
 }
 
@@ -288,7 +288,7 @@ func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, 
 	a := b.archives[archive]
 	rowOffset := a.calcRowOffset(ts)
 
-	LogDebug("BFS.Get rowOffset=%d", rowOffset)
+	LogDebug2("BFS.Get rowOffset=%d", rowOffset)
 
 	// Read real ts
 	if _, err := b.f.Seek(rowOffset, 0); err != nil {
@@ -303,7 +303,7 @@ func (b *BinaryFileStorage) Get(archive int, ts int64, columns []int) ([]Value, 
 		// value not found in this archive, search in next
 		return nil, nil
 	}
-	LogDebug("BFS.Get loading...")
+	LogDebug2("BFS.Get loading...")
 	return b.loadValues(rowOffset, rowTS, columns, archive)
 }
 
@@ -330,7 +330,7 @@ func (b *BinaryFileStorage) Iterate(archive int, begin, end int64, columns []int
 }
 
 func (b *BinaryFileStorage) loadValue(ts int64, column, archive int) (v Value, err error) {
-	LogDebug("BFS.loadValue ts=%d, column=%d, archive=%d", ts, column, archive)
+	LogDebug2("BFS.loadValue ts=%d, column=%d, archive=%d", ts, column, archive)
 	v = Value{
 		TS:        ts,
 		Column:    column,
@@ -351,7 +351,7 @@ func (b *BinaryFileStorage) loadValue(ts int64, column, archive int) (v Value, e
 }
 
 func (b *BinaryFileStorage) loadValues(rowOffset int64, rowTS int64, cols []int, archive int) ([]Value, error) {
-	LogDebug("BFS.loadValues rowOffset=%d, rowTD=%d, column=%d, archive=%d", rowOffset, rowTS, cols, archive)
+	LogDebug2("BFS.loadValues rowOffset=%d, rowTD=%d, column=%d, archive=%d", rowOffset, rowTS, cols, archive)
 	var values []Value
 	for _, col := range cols {
 		if _, err := b.f.Seek(rowOffset+8+int64(col*valueSize), 0); err != nil {
@@ -367,7 +367,7 @@ func (b *BinaryFileStorage) loadValues(rowOffset int64, rowTS int64, cols []int,
 }
 
 func (b *BinaryFileStorage) checkAndCleanRow(ts int64, tsOffset int64) error {
-	LogDebug("BFS.checkAndCleanRow ts=%d, tsOffset=%d", ts, tsOffset)
+	LogDebug2("BFS.checkAndCleanRow ts=%d, tsOffset=%d", ts, tsOffset)
 
 	if _, err := b.f.Seek(tsOffset, 0); err != nil {
 		return err
@@ -377,10 +377,10 @@ func (b *BinaryFileStorage) checkAndCleanRow(ts int64, tsOffset int64) error {
 		return err
 	}
 	if storeTS == ts {
-		LogDebug("BFS.checkAndCleanRow not need to clean")
+		LogDebug2("BFS.checkAndCleanRow not need to clean")
 		return nil
 	}
-	LogDebug("BFS.checkAndCleanRow cleaning")
+	LogDebug2("BFS.checkAndCleanRow cleaning")
 	if storeTS > ts {
 		return fmt.Errorf("updating by older value not allowed")
 	}
@@ -419,7 +419,7 @@ func (i *BinaryFileIterator) TS() int64 {
 
 // Next move to next row, return io.EOF on error
 func (i *BinaryFileIterator) Next() error {
-	LogDebug("BFS.Next [iter: row=%d, rowOffset=%d]", i.currentRow, i.rowOffset)
+	LogDebug2("BFS.Next [iter: row=%d, rowOffset=%d]", i.currentRow, i.rowOffset)
 
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -431,7 +431,7 @@ func (i *BinaryFileIterator) Next() error {
 	a := i.file.archives[i.archive]
 	for {
 		if i.currentRow >= int(a.Rows)-1 {
-			LogDebug("BFS.Next eof - last row")
+			LogDebug2("BFS.Next eof - last row")
 			return io.EOF
 		}
 		i.currentRow++
@@ -445,7 +445,7 @@ func (i *BinaryFileIterator) Next() error {
 		}
 		if ts >= i.begin {
 			if i.end > -1 && ts > i.end {
-				LogDebug("BFS.Next eof - lower value")
+				LogDebug2("BFS.Next eof - lower value")
 				return io.EOF
 			}
 			i.ts = ts
@@ -457,7 +457,7 @@ func (i *BinaryFileIterator) Next() error {
 
 // Value return value for one column in current row
 func (i *BinaryFileIterator) Value(column int) (*Value, error) {
-	LogDebug("BFS.Value col=%d [iter: row=%d, rowOffset=%d]", column, i.currentRow, i.rowOffset)
+	LogDebug2("BFS.Value col=%d [iter: row=%d, rowOffset=%d]", column, i.currentRow, i.rowOffset)
 
 	i.mu.RLock()
 	defer i.mu.RUnlock()
@@ -482,7 +482,7 @@ func (i *BinaryFileIterator) Value(column int) (*Value, error) {
 
 // Values return all values according to columns defined during creating iterator
 func (i *BinaryFileIterator) Values() (values []Value, err error) {
-	LogDebug("BFS.Values [iter: row=%d, rowOffset=%d]", i.currentRow, i.rowOffset)
+	LogDebug2("BFS.Values [iter: row=%d, rowOffset=%d]", i.currentRow, i.rowOffset)
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
