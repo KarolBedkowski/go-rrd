@@ -492,6 +492,24 @@ func modifyResizeArchive(c *cli.Context) {
 	}
 }
 
+func updateRRDfile(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+
+	ExitWhenErrors()
+
+	if err := UpdateRRD(filename); err != nil {
+		LogFatal("Error: %s", err.Error())
+	} else {
+		Log("Done")
+	}
+}
+
 func genRandomData(c *cli.Context) {
 	if !processGlobalArgs(c) {
 		return

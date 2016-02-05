@@ -264,6 +264,11 @@ func main() {
 			},
 			Action: genRandomData,
 		},
+		{
+			Name:   "update-rrd-file",
+			Usage:  "update rrd to never version",
+			Action: updateRRDfile,
+		},
 	}
 	app.Run(os.Args)
 }

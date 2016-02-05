@@ -858,6 +858,46 @@ func ModifyResizeArchive(filename string, archiveID int, rows int) error {
 	return os.Rename(filename+".new", filename)
 }
 
+// UpdateRRD update version of file
+func UpdateRRD(filename string) error {
+	r, err := OpenRRD(filename, true)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if r != nil {
+			r.Close()
+		}
+	}()
+
+	nRRD, err := NewRRD(filename+".new", r.columns, r.archives)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if nRRD != nil {
+			nRRD.Close()
+		}
+	}()
+
+	if err := copyData(r, nRRD, nil, nil); err != nil {
+		return err
+	}
+
+	nRRD.Close()
+	nRRD = nil
+	r.Close()
+	r = nil
+
+	LogDebug("delete old file")
+	if err := os.Remove(filename); err != nil {
+		return err
+	}
+
+	LogDebug("rename temp file")
+	return os.Rename(filename+".new", filename)
+}
+
 func (a *RRDArchive) calcTS(ts int64) (ats int64) {
 	if ts < 1 {
 		return ts
