@@ -635,14 +635,38 @@ func parseArchiveDef(inp string) (archives []RRDArchive, err error) {
 func parseColumnsDef(inp string) (columns []RRDColumn, err error) {
 	for idx, v := range strings.Split(inp, ",") {
 		cdef := strings.Split(v, ":")
-		if len(cdef) > 2 || len(cdef) < 1 {
+		if len(cdef) < 1 {
 			return nil, fmt.Errorf("invalid column definition on index %d: '%s'", idx+1, v)
 		}
 		c := RRDColumn{}
-		if len(cdef) == 2 {
+		if len(cdef) > 1 {
 			c.Name = cdef[1]
 			if len(c.Name) > 16 {
 				c.Name = c.Name[:16]
+			}
+		}
+		if len(cdef) > 2 { // min value
+			minS := strings.TrimSpace(cdef[2])
+			if len(minS) > 0 {
+				var v float64
+				v, err = strconv.ParseFloat(minS, 32)
+				if err != nil {
+					return nil, fmt.Errorf("invalid min value for column %d: %v; %s", idx+1, minS, err.Error)
+				}
+				c.Minimum = float32(v)
+				c.HasMinimum = true
+			}
+		}
+		if len(cdef) > 2 { // max value
+			maxS := strings.TrimSpace(cdef[3])
+			if len(maxS) > 0 {
+				var v float64
+				v, err = strconv.ParseFloat(maxS, 32)
+				if err != nil {
+					return nil, fmt.Errorf("invalid max value for column %d: %v; %s", idx+1, maxS, err.Error)
+				}
+				c.Maximum = float32(v)
+				c.HasMaximum = true
 			}
 		}
 		if c.Name == "" {
@@ -663,7 +687,14 @@ func printRRDInfo(f *RRD) {
 		fmt.Printf("Filename: %s\n", info.Filename)
 		fmt.Printf("Columns: %d\n", info.ColumnsCount)
 		for _, col := range info.Columns {
-			fmt.Printf(" - %s - %s\n", col.Name, col.Function.String())
+			fmt.Printf(" - %s - %s", col.Name, col.Function.String())
+			if col.HasMinimum {
+				fmt.Printf(" min: %f", col.Minimum)
+			}
+			if col.HasMaximum {
+				fmt.Printf(" max: %f", col.Maximum)
+			}
+			fmt.Println("")
 		}
 		fmt.Printf("Archives: %d\n", info.ArchivesCount)
 		for _, a := range info.Archives {

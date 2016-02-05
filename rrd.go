@@ -29,6 +29,14 @@ type (
 	RRDColumn struct {
 		Name     string   // byte[16]
 		Function Function // int32
+
+		// version 2
+		// Minimum acceptable value
+		Minimum    float32
+		HasMinimum bool
+		// Maximum acceptable value
+		Maximum    float32
+		HasMaximum bool
 	}
 
 	// RRDArchive defines one archive
@@ -178,8 +186,23 @@ func (r *RRD) PutValues(values ...Value) error {
 		return fmt.Errorf("RRD file open as read-only")
 	}
 
-	cols := make([]int, 0, len(values))
+	// filter invalid values
+	var filtered []Value
 	for _, v := range values {
+		colDef := r.columns[v.Column]
+		if colDef.HasMinimum && colDef.Minimum > v.Value {
+			Log("Value < minimum (%f) in column %d - skipping", colDef.Minimum, v.Column)
+			continue
+		}
+		if colDef.HasMaximum && colDef.Maximum < v.Value {
+			Log("Value > maximum (%f) in column %d - skipping", colDef.Maximum, v.Column)
+			continue
+		}
+		filtered = append(filtered, v)
+	}
+
+	cols := make([]int, 0, len(filtered))
+	for _, v := range filtered {
 		cols = append(cols, v.Column)
 	}
 	if len(cols) == 0 { // no columns defined
@@ -199,6 +222,7 @@ func (r *RRD) PutValues(values ...Value) error {
 		if err != nil {
 			return err
 		}
+
 		// update
 		var updatedVal []Value
 		if len(preValues) > 0 {

@@ -17,6 +17,16 @@ header
 columns definitions[columns count]
 archives definitions[archives count]
 archives[archives count]
+
+column[
+	name byte[16]
+	funcid int32
+	flags int32
+		- &1 - has minimum
+		- &2 - has maximum
+	minimum float32
+	maximum float32
+]
 */
 
 type (
@@ -48,6 +58,7 @@ type (
 	// column definition
 	bfColumn struct {
 		RRDColumn
+		Flags int32
 	}
 
 	// archive definition
@@ -74,12 +85,16 @@ type (
 )
 
 const (
-	fileVersion    = int32(1)
-	fileMagic      = int64(1038472294759683202)
-	rrdHeaderSize  = 4 + 2 + 2 + 8
-	rrdColumnSize  = 16 + 4
-	rrdArchiveSize = 16 + 8 + 4 + 8 + 8
-	valueSize      = 4 + 4 + 8
+	fileVersion     = int32(2)
+	fileMagic       = int64(1038472294759683202)
+	rrdHeaderSize   = 4 + 2 + 2 + 8
+	rrdColumnSize   = 16 + 4
+	rrdColumnSizeV2 = 16 + 4 + 4 + 4 + 4
+	rrdArchiveSize  = 16 + 8 + 4 + 8 + 8
+	valueSize       = 4 + 4 + 8
+
+	hasMinimumFlag = 1
+	hasMaximumFlag = 2
 )
 
 // Create new file
@@ -116,11 +131,15 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 	}
 
 	for _, c := range columns {
-		b.columns = append(b.columns, bfColumn{c})
+		b.columns = append(b.columns, bfColumn{c, 0})
 	}
 
-	allHeadersLen := rrdHeaderSize + rrdColumnSize*len(columns) +
-		rrdArchiveSize*len(archives)
+	allHeadersLen := rrdHeaderSize + rrdArchiveSize*len(archives)
+	if b.header.Version == 1 {
+		allHeadersLen += rrdColumnSize * len(columns)
+	} else {
+		allHeadersLen += rrdColumnSizeV2 * len(columns)
+	}
 
 	b.rowSize = valueSize*len(b.columns) + 8 // ts
 	b.archives = calcArchiveOffsetSize(archives, b.rowSize, allHeadersLen)
@@ -130,7 +149,7 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 	if err = writeHeader(f, b.header); err != nil {
 		return err
 	}
-	if err = writeColumnsDef(f, b.columns); err != nil {
+	if err = writeColumnsDef(f, b.columns, b.header.Version); err != nil {
 		return err
 	}
 	if err = writeArchivesDef(f, b.archives); err != nil {
@@ -193,7 +212,7 @@ func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, [
 		return nil, nil, err
 	}
 
-	b.columns, err = loadColumnsDef(f, int(b.header.ColumnsCount))
+	b.columns, err = loadColumnsDef(f, int(b.header.ColumnsCount), b.header.Version)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -548,7 +567,7 @@ func loadHeader(r io.Reader) (header bfHeader, err error) {
 	if err = binary.Read(r, binary.LittleEndian, &header.Version); err != nil {
 		return
 	}
-	if header.Version != fileVersion {
+	if header.Version > fileVersion {
 		err = fmt.Errorf("invalid file (version)")
 		return
 	}
@@ -589,7 +608,7 @@ func writeHeader(w io.Writer, header bfHeader) (err error) {
 	return nil
 }
 
-func loadColumnsDef(r io.Reader, colCount int) (cols []bfColumn, err error) {
+func loadColumnsDef(r io.Reader, colCount int, version int32) (cols []bfColumn, err error) {
 	LogDebug("BFS.loadColumnsDef")
 	for i := 0; i < colCount; i++ {
 		buf := make([]byte, 16, 16)
@@ -603,9 +622,24 @@ func loadColumnsDef(r io.Reader, colCount int) (cols []bfColumn, err error) {
 		col := bfColumn{
 			RRDColumn: RRDColumn{
 
-				Name:     strings.TrimRight(string(buf), "\x00"),
-				Function: Function(funcID),
+				Name:       strings.TrimRight(string(buf), "\x00"),
+				Function:   Function(funcID),
+				HasMinimum: false,
+				HasMaximum: false,
 			},
+		}
+		if version > 1 {
+			if err = binary.Read(r, binary.LittleEndian, &col.Flags); err != nil {
+				return
+			}
+			col.RRDColumn.HasMinimum = col.Flags&hasMinimumFlag == hasMinimumFlag
+			col.RRDColumn.HasMaximum = col.Flags&hasMaximumFlag == hasMaximumFlag
+			if err = binary.Read(r, binary.LittleEndian, &col.RRDColumn.Minimum); err != nil {
+				return
+			}
+			if err = binary.Read(r, binary.LittleEndian, &col.RRDColumn.Maximum); err != nil {
+				return
+			}
 		}
 		cols = append(cols, col)
 	}
@@ -613,7 +647,7 @@ func loadColumnsDef(r io.Reader, colCount int) (cols []bfColumn, err error) {
 	return
 }
 
-func writeColumnsDef(w io.Writer, cols []bfColumn) (err error) {
+func writeColumnsDef(w io.Writer, cols []bfColumn, version int32) (err error) {
 	LogDebug("BFS.writeColumnsDef")
 	for _, col := range cols {
 		name := make([]byte, 16, 16)
@@ -627,6 +661,24 @@ func writeColumnsDef(w io.Writer, cols []bfColumn) (err error) {
 		}
 		if err = binary.Write(w, binary.LittleEndian, int32(col.Function)); err != nil {
 			return
+		}
+		if version > 1 {
+			col.Flags = 0
+			if col.RRDColumn.HasMinimum {
+				col.Flags |= hasMinimumFlag
+			}
+			if col.RRDColumn.HasMaximum {
+				col.Flags |= hasMaximumFlag
+			}
+			if err = binary.Write(w, binary.LittleEndian, col.Flags); err != nil {
+				return
+			}
+			if err = binary.Write(w, binary.LittleEndian, col.RRDColumn.Minimum); err != nil {
+				return
+			}
+			if err = binary.Write(w, binary.LittleEndian, col.RRDColumn.Maximum); err != nil {
+				return
+			}
 		}
 	}
 	LogDebug("BFS.writeColumnsDef finished")

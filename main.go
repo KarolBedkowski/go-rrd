@@ -55,7 +55,7 @@ func main() {
 				cli.StringFlag{
 					Name:  "columns, c",
 					Value: "",
-					Usage: "columns definition in form: function[:col name],function[:col name],.... Functions: average/avg/sum/min/minimum/max/maximum/count/last",
+					Usage: "columns definition in form: function:col name:min:max,.... Functions: average/avg/sum/min/minimum/max/maximum/count/last; name, max and min are optional",
 				},
 				cli.StringFlag{
 					Name:  "archives, a",
