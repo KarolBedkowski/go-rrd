@@ -3,6 +3,9 @@ DATE=`date`
 LDFLAGS="-X main.AppVersion '$(VERSION) - $(DATE)'"
 
 build:
+	go build -v -o go-rrd
+	
+build_release:
 	go build -v -o go-rrd -ldflags $(LDFLAGS)
 
 build_pi:
