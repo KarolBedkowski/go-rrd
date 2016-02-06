@@ -820,12 +820,12 @@ func TestRangeIncludeInvalid(t *testing.T) {
 
 func createTestDB(t *testing.T) (*RRD, []RRDColumn, []RRDArchive) {
 	c := []RRDColumn{
-		RRDColumn{"col1", FLast},
-		RRDColumn{"col2", FAverage},
-		RRDColumn{"col3", FSum},
-		RRDColumn{"col4", FMinimum},
-		RRDColumn{"col5", FMaximum},
-		RRDColumn{"col6", FCount},
+		RRDColumn{Name: "col1", Function: FLast},
+		RRDColumn{Name: "col2", Function: FAverage},
+		RRDColumn{Name: "col3", Function: FSum},
+		RRDColumn{Name: "col4", Function: FMinimum},
+		RRDColumn{Name: "col5", Function: FMaximum},
+		RRDColumn{Name: "col6", Function: FCount},
 	}
 	a := []RRDArchive{
 		RRDArchive{Name: "a0", Step: 1, Rows: 10},
