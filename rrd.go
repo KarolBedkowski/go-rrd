@@ -163,6 +163,16 @@ func (r *RRD) ColumnName(col int) string {
 	return r.columns[col].Name
 }
 
+// GetColumn definition by idx
+func (r *RRD) GetColumn(idx int) RRDColumn {
+	return r.columns[idx]
+}
+
+// SetColumn definition
+func (r *RRD) SetColumn(idx int, col RRDColumn) {
+	r.columns[idx] = col
+}
+
 // Put value into database
 func (r *RRD) Put(ts int64, col int, value float32) error {
 	LogDebug("RRD.Put ts=%v, col=%d, value=%v", ts, col, value)
@@ -580,6 +590,30 @@ func (r *RRD) Dump(filename string) error {
 		return err
 	}
 	return ioutil.WriteFile(filename, enc, 0660)
+}
+
+// SaveAs save current rrd to new file (with changes)
+func (r *RRD) SaveAs(filename string) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	nRRD, err := NewRRD(filename, r.columns, r.archives)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if nRRD != nil {
+			nRRD.Close()
+		}
+	}()
+
+	if err := copyData(r, nRRD, nil, nil); err != nil {
+		return err
+	}
+
+	nRRD.Close()
+	nRRD = nil
+	return nil
 }
 
 // LoadDumpRRD load json-encoded file into new rrd file

@@ -4,6 +4,7 @@ import (
 	//	"flag"
 	"fmt"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -379,6 +380,89 @@ func modifyAddColumns(c *cli.Context) {
 	}
 }
 
+func modifyChangeColumn(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, ok := getFilenameParam(c)
+	if !ok {
+		return
+	}
+
+	var colIdx int
+	colS := c.String("column")
+	if !c.IsSet("column") || colS == "" {
+		LogError("Missing column (--column)")
+	} else {
+		var err error
+		colIdx, err = parseColumnSel(colS)
+		if err != nil {
+			LogError("Invalid column (--column)")
+		}
+	}
+
+	ExitWhenErrors()
+
+	f, err := OpenRRD(filename, false)
+	defer close(f)
+	if err != nil {
+		LogFatal("Open db error: %s", err.Error())
+		return
+	}
+
+	col := f.GetColumn(colIdx)
+
+	if c.IsSet("name") {
+		// change name
+		name := strings.TrimSpace(c.String("name"))
+		if len(name) > 16 {
+			col.Name = name[:16]
+		} else if len(name) > 0 {
+			col.Name = name
+		}
+	}
+
+	if c.Bool("no-min") {
+		col.HasMinimum = false
+	} else if c.IsSet("min") {
+		// set minimum value
+		col.Minimum = float32(c.Float64("min"))
+		col.HasMinimum = true
+	}
+
+	if c.Bool("no-max") {
+		col.HasMaximum = false
+	} else if c.IsSet("max") {
+		// set maximum value
+		col.Maximum = float32(c.Float64("max"))
+		col.HasMaximum = true
+	}
+
+	f.SetColumn(colIdx, col)
+
+	tmpName := filename + ".new"
+	if err = f.SaveAs(tmpName); err != nil {
+		LogFatal("Save file to %s error: %s", filename, err.Error())
+		return
+	}
+
+	f.Close()
+	f = nil
+
+	LogDebug("delete old file")
+	if err := os.Remove(filename); err != nil {
+		LogFatal("removing old file %s error: %s", filename, err.Error())
+		return
+	}
+
+	LogDebug("rename temp file")
+	if err := os.Rename(tmpName, filename); err != nil {
+		LogFatal("renaming file %s to %s error: %s", tmpName, filename, err.Error())
+	} else {
+		Log("Done")
+	}
+}
+
 func modifyDelColumns(c *cli.Context) {
 	if !processGlobalArgs(c) {
 		return
@@ -698,6 +782,11 @@ func parseColumnsDef(inp string) (columns []RRDColumn, err error) {
 		columns = append(columns, c)
 	}
 	return
+}
+
+func parseColumnSel(s string) (int, error) {
+	// TODO: names
+	return strconv.Atoi(s)
 }
 
 func printRRDInfo(f *RRD) {

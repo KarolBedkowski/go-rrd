@@ -191,6 +191,39 @@ func main() {
 			Action: modifyAddColumns,
 		},
 		{
+			Name:  "change-column",
+			Usage: "modify column (name, min, max values)",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "column, c",
+					Value: "",
+					Usage: "column to change",
+				},
+				cli.StringFlag{
+					Name:  "name",
+					Value: "",
+					Usage: "new name",
+				},
+				cli.Float64Flag{
+					Name:  "min",
+					Usage: "new minimal value",
+				},
+				cli.BoolFlag{
+					Name:  "no-min",
+					Usage: "set no minimum value",
+				},
+				cli.Float64Flag{
+					Name:  "max",
+					Usage: "new maximum value",
+				},
+				cli.BoolFlag{
+					Name:  "no-max",
+					Usage: "set no maximum value",
+				},
+			},
+			Action: modifyChangeColumn,
+		},
+		{
 			Name:  "del-columns",
 			Usage: "remove columns from rrd file",
 			Flags: []cli.Flag{
