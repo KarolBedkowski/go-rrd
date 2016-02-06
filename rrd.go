@@ -211,6 +211,13 @@ func (r *RRD) PutValues(values ...Value) error {
 		filtered = append(filtered, v)
 	}
 
+	LogDebug2("filtered: %+v", filtered)
+
+	if len(filtered) == 0 {
+		Log("No values to put")
+		return nil
+	}
+
 	cols := make([]int, 0, len(filtered))
 	for _, v := range filtered {
 		cols = append(cols, v.Column)
@@ -224,7 +231,7 @@ func (r *RRD) PutValues(values ...Value) error {
 		LogDebug("RRD.PutValues updating archive %d", a)
 
 		// all values should have this same TS
-		ts := a.calcTS(values[0].TS)
+		ts := a.calcTS(filtered[0].TS)
 
 		// get previous values
 		LogDebug("RRD.PutValues get prevoius values")
@@ -237,7 +244,7 @@ func (r *RRD) PutValues(values ...Value) error {
 		var updatedVal []Value
 		if len(preValues) > 0 {
 			LogDebug("RRD.PutValues found prevoius values: %v", preValues)
-			for i, v := range values {
+			for i, v := range filtered {
 				pv := preValues[i]
 				col := cols[i]
 				if pv.Column != col {
@@ -251,7 +258,7 @@ func (r *RRD) PutValues(values ...Value) error {
 				updatedVal = append(updatedVal, uv)
 			}
 		} else {
-			for col, v := range values {
+			for col, v := range filtered {
 				v.Counter = 1
 				if r.columns[col].Function == FCount {
 					v.Value = 1

@@ -7,7 +7,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	//Debug = true
+	//Debug = 1
 	os.Exit(m.Run())
 }
 
@@ -596,6 +596,29 @@ func TestPutDataRR5(t *testing.T) {
 	}
 }
 
+func TestPutDataMinMax(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+
+	// few values
+
+	if err := r.Put(int64(10), 0, -1.0); err != nil {
+		t.Errorf("Put value error: %s", err.Error())
+	}
+
+	if values, _ := r.Get(10, 0); len(values) > 0 {
+		t.Errorf("Too low value found in rrd: %+v", values)
+	}
+
+	if err := r.Put(int64(11), 0, 1000001.0); err != nil {
+		t.Errorf("Put value error: %s", err.Error())
+	}
+
+	if values, _ := r.Get(11, 0); len(values) > 0 {
+		t.Errorf("Too low value found in rrd: %+v", values)
+	}
+}
+
 func TestPutDataFuncs(t *testing.T) {
 	// Test agregations
 	r, _, _ := createTestDB(t)
@@ -820,7 +843,7 @@ func TestRangeIncludeInvalid(t *testing.T) {
 
 func createTestDB(t *testing.T) (*RRD, []RRDColumn, []RRDArchive) {
 	c := []RRDColumn{
-		RRDColumn{Name: "col1", Function: FLast},
+		RRDColumn{Name: "col1", Function: FLast, Minimum: 0, Maximum: 1000000, HasMinimum: true, HasMaximum: true},
 		RRDColumn{Name: "col2", Function: FAverage},
 		RRDColumn{Name: "col3", Function: FSum},
 		RRDColumn{Name: "col4", Function: FMinimum},
