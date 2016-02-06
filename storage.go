@@ -264,7 +264,7 @@ func (b *BinaryFileStorage) Put(archive int, ts int64, values ...Value) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	LogDebug("BFS.Put archive=%d, ts=%d, values=%v", archive, ts, values)
+	LogDebug2("BFS.Put archive=%d, ts=%d, values=%v", archive, ts, values)
 
 	if b.f == nil {
 		return fmt.Errorf("closed file")

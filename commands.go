@@ -753,7 +753,7 @@ func parseColumnsDef(inp string) (columns []RRDColumn, err error) {
 				var v float64
 				v, err = strconv.ParseFloat(minS, 32)
 				if err != nil {
-					return nil, fmt.Errorf("invalid min value for column %d: %v; %s", idx+1, minS, err.Error)
+					return nil, fmt.Errorf("invalid min value for column %d: %v; %s", idx+1, minS, err.Error())
 				}
 				c.Minimum = float32(v)
 				c.HasMinimum = true
@@ -765,7 +765,7 @@ func parseColumnsDef(inp string) (columns []RRDColumn, err error) {
 				var v float64
 				v, err = strconv.ParseFloat(maxS, 32)
 				if err != nil {
-					return nil, fmt.Errorf("invalid max value for column %d: %v; %s", idx+1, maxS, err.Error)
+					return nil, fmt.Errorf("invalid max value for column %d: %v; %s", idx+1, maxS, err.Error())
 				}
 				c.Maximum = float32(v)
 				c.HasMaximum = true
