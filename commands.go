@@ -24,7 +24,7 @@ func initDB(c *cli.Context) {
 
 	columns, err := parseColumnsDef(cols)
 	if err != nil {
-		LogError("Columns definition error: " + err.Error())
+		LogError("Columns definition error: %s", err.Error())
 	}
 
 	archivesDef := c.String("archives")
@@ -85,7 +85,7 @@ func putValues(c *cli.Context) {
 	if c.IsSet("columns") {
 		colsIDs, err := getContextParamIntList(c, "columns")
 		if err != nil {
-			LogError("Invalid --columns parameter: ", err.Error())
+			LogError("Invalid --columns parameter: %s", err.Error())
 		}
 		if len(colsIDs) != len(values) {
 			LogError("Number of columns (--columns) don't match number of values")
@@ -121,10 +121,6 @@ func getValue(c *cli.Context) {
 	if !c.IsSet("ts") || ts == "" {
 		LogError("Missing timestamp (--ts)")
 	}
-	colsIDs, err := getContextParamIntList(c, "columns")
-	if err != nil {
-		LogError("Invalid --columns parameter: ", err.Error())
-	}
 	timestamp, ok := dateToTs(ts)
 	if !ok {
 		LogError("Parse ts error")
@@ -136,6 +132,16 @@ func getValue(c *cli.Context) {
 	defer close(f)
 	if err != nil {
 		LogFatal("Open db error: %s", err.Error())
+	}
+
+	var colsIDs []int
+	if c.IsSet("columns") {
+		var err error
+		colsIDs, err = parseColumnsList(f, c.String("columns"))
+		if err != nil {
+			LogError("Invalid --columns parameter: %s", err.Error())
+			return
+		}
 	}
 
 	separator := c.GlobalString("separator")
@@ -178,17 +184,22 @@ func getRangeValues(c *cli.Context) {
 		LogError("Parsing end date error")
 	}
 
-	colsIDs, err := getContextParamIntList(c, "columns")
-	if err != nil {
-		LogError("Invalid --columns parameter: ", err.Error())
-	}
-
 	ExitWhenErrors()
 
 	f, err := OpenRRD(filename, true)
 	defer close(f)
 	if err != nil {
 		LogFatal("Open db error: %s", err.Error())
+	}
+
+	var colsIDs []int
+	if c.IsSet("columns") {
+		var err error
+		colsIDs, err = parseColumnsList(f, c.String("columns"))
+		if err != nil {
+			LogError("Invalid --columns parameter: %s", err.Error())
+			return
+		}
 	}
 
 	var timeFmt func(int64) string
@@ -389,16 +400,9 @@ func modifyChangeColumn(c *cli.Context) {
 		return
 	}
 
-	var colIdx int
 	colS := c.String("column")
 	if !c.IsSet("column") || colS == "" {
 		LogError("Missing column (--column)")
-	} else {
-		var err error
-		colIdx, err = parseColumnSel(colS)
-		if err != nil {
-			LogError("Invalid column (--column)")
-		}
 	}
 
 	ExitWhenErrors()
@@ -407,6 +411,13 @@ func modifyChangeColumn(c *cli.Context) {
 	defer close(f)
 	if err != nil {
 		LogFatal("Open db error: %s", err.Error())
+		return
+	}
+
+	var colIdx int
+	colIdx, err = parseColumnSel(f, colS)
+	if err != nil {
+		LogError("Invalid column (--column): %s", err.Error())
 		return
 	}
 
@@ -476,10 +487,16 @@ func modifyDelColumns(c *cli.Context) {
 		LogError("Missing columns to delete (--columns)")
 	}
 
-	columns, err := parseStrIntList(cols)
+	r, err := OpenRRD(filename, true)
+	if err != nil {
+		close(r)
+		return
+	}
+	columns, err := parseColumnsList(r, cols)
 	if err != nil {
 		LogError("Columns definition error: " + err.Error())
 	}
+	r.Close()
 
 	ExitWhenErrors()
 
@@ -702,6 +719,17 @@ func parseStrIntList(inp string) (res []int, err error) {
 	return
 }
 
+func parseColumnsList(r *RRD, inp string) (res []int, err error) {
+	for _, v := range strings.Split(inp, ",") {
+		idx, e := parseColumnSel(r, v)
+		if e != nil {
+			return nil, e
+		}
+		res = append(res, idx)
+	}
+	return
+}
+
 func parseArchiveDef(inp string) (archives []RRDArchive, err error) {
 	for idx, v := range strings.Split(inp, ",") {
 		adef := strings.Split(v, ":")
@@ -784,9 +812,17 @@ func parseColumnsDef(inp string) (columns []RRDColumn, err error) {
 	return
 }
 
-func parseColumnSel(s string) (int, error) {
-	// TODO: names
-	return strconv.Atoi(s)
+func parseColumnSel(r *RRD, s string) (int, error) {
+	if idx, err := strconv.Atoi(s); err == nil && idx >= 0 {
+		return idx, nil
+	}
+
+	idx, ok := r.GetColumnIdx(s)
+	if !ok {
+		return 0, fmt.Errorf("Unknown column %v", s)
+	}
+
+	return idx, nil
 }
 
 func printRRDInfo(f *RRD) {

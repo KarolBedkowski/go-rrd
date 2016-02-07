@@ -168,6 +168,15 @@ func (r *RRD) GetColumn(idx int) RRDColumn {
 	return r.columns[idx]
 }
 
+func (r *RRD) GetColumnIdx(name string) (int, bool) {
+	for idx, v := range r.columns {
+		if v.Name == name {
+			return idx, true
+		}
+	}
+	return 0, false
+}
+
 // SetColumn definition
 func (r *RRD) SetColumn(idx int, col RRDColumn) {
 	r.columns[idx] = col
