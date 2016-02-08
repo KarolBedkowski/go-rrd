@@ -168,13 +168,14 @@ func (r *RRD) GetColumn(idx int) RRDColumn {
 	return r.columns[idx]
 }
 
-func (r *RRD) GetColumnIdx(name string) (int, bool) {
+// GetColumnIdx search for column by name and return it index
+func (r *RRD) GetColumnIdx(name string) (index int, ok bool) {
 	for idx, v := range r.columns {
 		if v.Name == name {
 			return idx, true
 		}
 	}
-	return 0, false
+	return
 }
 
 // SetColumn definition

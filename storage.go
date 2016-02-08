@@ -109,9 +109,11 @@ func (b *BinaryFileStorage) Create(filename string, columns []RRDColumn, archive
 
 	//	 TODO: check is exists
 	LogDebug("BFS.Create locking")
-	if flock, err := lock.Lock(filename + ".lock"); err != nil {
-		return err
-	} else {
+	{
+		flock, err := lock.Lock(filename + ".lock")
+		if err != nil {
+			return err
+		}
 		b.fLock = flock
 	}
 
@@ -183,9 +185,11 @@ func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, [
 	}
 
 	LogDebug("BFS.Open locking file")
-	if flock, err := lock.Lock(filename + ".lock"); err != nil {
-		return nil, nil, err
-	} else {
+	{
+		flock, err := lock.Lock(filename + ".lock")
+		if err != nil {
+			return nil, nil, err
+		}
 		b.fLock = flock
 	}
 
