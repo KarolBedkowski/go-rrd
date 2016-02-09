@@ -82,8 +82,18 @@ func putValues(c *cli.Context) {
 		})
 	}
 
+	ExitWhenErrors()
+
+	f, err := OpenRRD(filename, false)
+	defer close(f)
+	if err != nil {
+		LogFatal("Open db error: %s", err.Error())
+		return
+	}
+
 	if c.IsSet("columns") {
-		colsIDs, err := getContextParamIntList(c, "columns")
+		cols := strings.Split(c.String("columns"), ",")
+		colsIDs, err := f.ParseColumnsNames(cols)
 		if err != nil {
 			LogError("Invalid --columns parameter: %s", err.Error())
 		}
@@ -95,15 +105,6 @@ func putValues(c *cli.Context) {
 			val.Column = c
 			values[idx] = val
 		}
-	}
-
-	ExitWhenErrors()
-
-	f, err := OpenRRD(filename, false)
-	defer close(f)
-	if err != nil {
-		LogFatal("Open db error: %s", err.Error())
-		return
 	}
 
 	err = f.PutValues(values...)
@@ -693,30 +694,6 @@ func dateToTs(ts string) (int64, bool) {
 		}
 	}
 	return time.Now().Unix(), false
-}
-
-func getContextParamIntList(c *cli.Context, param string) (res []int, err error) {
-	if !c.IsSet(param) {
-		return nil, nil
-	}
-	value := strings.TrimSpace(c.String(param))
-	if value == "" {
-		return nil, nil
-	}
-	return parseStrIntList(value)
-}
-
-func parseStrIntList(inp string) (res []int, err error) {
-	for _, v := range strings.Split(inp, ",") {
-		var vNum int
-		vNum, err = strconv.Atoi(v)
-		if err != nil {
-			err = fmt.Errorf("invalid value '%s'", v)
-			return
-		}
-		res = append(res, vNum)
-	}
-	return
 }
 
 func parseArchiveDef(inp string) (archives []RRDArchive, err error) {
