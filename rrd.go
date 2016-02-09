@@ -194,6 +194,7 @@ func (r *RRD) ParseColumnsNames(names []string) (ids []int, err error) {
 
 // ParseColumnName find column id for name
 func (r *RRD) ParseColumnName(name string) (colIDX int, err error) {
+	name = strings.TrimSpace(name)
 	if idx, err := strconv.Atoi(name); err == nil && idx >= 0 {
 		if idx >= len(r.columns) {
 			return 0, fmt.Errorf("Column %v not found", name)
