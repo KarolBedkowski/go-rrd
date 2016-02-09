@@ -803,8 +803,8 @@ func printRRDInfo(f *RRD) {
 	if info, err := f.Info(); err == nil {
 		fmt.Printf("Filename: %s\n", info.Filename)
 		fmt.Printf("Columns: %d\n", info.ColumnsCount)
-		for _, col := range info.Columns {
-			fmt.Printf(" - %s - %s", col.Name, col.Function.String())
+		for idx, col := range info.Columns {
+			fmt.Printf(" %2d. %-16s - %s", idx, col.Name, col.Function.String())
 			if col.HasMinimum {
 				fmt.Printf(" min: %f", col.Minimum)
 			}
@@ -814,20 +814,19 @@ func printRRDInfo(f *RRD) {
 			fmt.Println("")
 		}
 		fmt.Printf("Archives: %d\n", info.ArchivesCount)
-		for _, a := range info.Archives {
-			fmt.Printf(" - Name: %s\n", a.Name)
-			fmt.Printf("   Rows: %d\n", a.Rows)
-			fmt.Printf("   Step: %d\n", a.Step)
-			fmt.Printf("   TS range: %d - %d (%s - %s)\n", a.MinTS, a.MaxTS,
+		for idx, a := range info.Archives {
+			fmt.Printf(" %2d. %-16s\n", idx, a.Name)
+			fmt.Printf("     Rows: %5d   Step: %d\n", a.Rows, a.Step)
+			fmt.Printf("     TS range: %d - %d (%s - %s)\n", a.MinTS, a.MaxTS,
 				time.Unix(a.MinTS, 0).String(), time.Unix(a.MaxTS, 0).String())
-			fmt.Printf("   Used rows: %d (%0.1f%%)\n", a.UsedRows,
+			fmt.Printf("     Used rows: %d (%0.1f%%)\n", a.UsedRows,
 				100.0*float32(a.UsedRows)/float32(a.Rows))
 			valuesInRows := float32(0)
 			if a.UsedRows > 0 {
 				valuesInRows = float32(a.Values) / float32(a.UsedRows*info.ColumnsCount)
 			}
 			valuesInDb := float32(a.Values) / float32(a.Rows*info.ColumnsCount)
-			fmt.Printf("   Inserted values: %d (%0.1f%% in rows; %0.1f%% in database)\n",
+			fmt.Printf("     Inserted values: %d (%0.1f%% in rows; %0.1f%% in database)\n",
 				a.Values, 100.0*valuesInRows, 100.0*valuesInDb)
 		}
 	} else {
