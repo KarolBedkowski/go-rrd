@@ -211,6 +211,44 @@ func (r *RRD) SetColumn(idx int, col RRDColumn) {
 	r.columns[idx] = col
 }
 
+// GetArchiveIdx search for archive by name and return it index
+func (r *RRD) GetArchiveIdx(name string) (index int, ok bool) {
+	for idx, a := range r.archives {
+		if a.Name == name {
+			return idx, true
+		}
+	}
+	return
+}
+
+// ParseArchiveNames replace list of strings (ids, names) by list of ids of archives
+func (r *RRD) ParseArchiveNames(names []string) (aIDs []int, err error) {
+	aIDs = make([]int, 0, len(names))
+	var idx int
+	for _, a := range names {
+		if idx, err = r.ParseArchiveName(a); err != nil {
+			return nil, err
+		}
+		aIDs = append(aIDs, idx)
+	}
+	return
+}
+
+// ParseArchiveName find archive id by name
+func (r *RRD) ParseArchiveName(name string) (aID int, err error) {
+	name = strings.TrimSpace(name)
+	if idx, err := strconv.Atoi(name); err == nil && idx >= 0 {
+		if idx >= len(r.archives) {
+			return 0, fmt.Errorf("Archive %d not found", idx)
+		}
+		return idx, nil
+	}
+	if idx, ok := r.GetArchiveIdx(name); ok {
+		return idx, nil
+	}
+	return 0, fmt.Errorf("Unknown archive %v", name)
+}
+
 // Put value into database
 func (r *RRD) Put(ts int64, col int, value float32) error {
 	LogDebug("RRD.Put ts=%v, col=%d, value=%v", ts, col, value)

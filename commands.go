@@ -548,12 +548,23 @@ func modifyDelArchives(c *cli.Context) {
 	if !c.IsSet("archives") || archivesDef == "" {
 		LogError("Missing archives list (--archives)")
 	}
-	archives, err := parseStrIntList(archivesDef)
-	if err != nil {
-		LogError("Archives definition error: " + err.Error())
-	}
 
 	ExitWhenErrors()
+
+	f, err := OpenRRD(filename, false)
+	if err != nil {
+		LogFatal("Open db error: %s", err.Error())
+		close(f)
+		return
+	}
+
+	archives, err := f.ParseArchiveNames(strings.Split(archivesDef, ","))
+	if err != nil {
+		LogError("Archives definition error: " + err.Error())
+		close(f)
+		return
+	}
+	close(f)
 
 	if err := ModifyDelArchives(filename, archives); err != nil {
 		LogFatal("Error: %s", err.Error())
@@ -575,11 +586,6 @@ func modifyResizeArchive(c *cli.Context) {
 	if !c.IsSet("archive") || archivesDef == "" {
 		LogError("Missing archive (--archive)")
 	}
-	archives, err := parseStrIntList(archivesDef)
-	if err != nil {
-		LogError("Archives definition error: " + err.Error())
-	}
-
 	rows := c.Int("rows")
 	if rows < 1 {
 		LogError("Invalid number of rows (--rows)")
@@ -587,7 +593,22 @@ func modifyResizeArchive(c *cli.Context) {
 
 	ExitWhenErrors()
 
-	if err := ModifyResizeArchive(filename, archives[0], rows); err != nil {
+	f, err := OpenRRD(filename, false)
+	if err != nil {
+		LogFatal("Open db error: %s", err.Error())
+		close(f)
+		return
+	}
+
+	archive, err := f.ParseArchiveName(archivesDef)
+	if err != nil {
+		LogError("Archives definition error: " + err.Error())
+		close(f)
+		return
+	}
+	close(f)
+
+	if err := ModifyResizeArchive(filename, archive, rows); err != nil {
 		LogFatal("Error: %s", err.Error())
 	} else {
 		Log("Done")
