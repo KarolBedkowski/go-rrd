@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -80,6 +81,13 @@ func (s *Server) Start() {
 	}
 
 	s.db = f
+
+	ticker := time.NewTicker(time.Second * 5)
+	go func() {
+		for _ = range ticker.C {
+			s.db.Flush()
+		}
+	}()
 
 	server := &http.Server{
 		Addr: s.Address,
@@ -210,7 +218,6 @@ func (s *Server) putHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "put error "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.db.Flush()
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
