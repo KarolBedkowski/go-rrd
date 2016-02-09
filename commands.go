@@ -137,7 +137,7 @@ func getValue(c *cli.Context) {
 	var colsIDs []int
 	if c.IsSet("columns") {
 		var err error
-		colsIDs, err = parseColumnsList(f, c.String("columns"))
+		colsIDs, err = f.ParseColumnsNames(strings.Split(c.String("columns"), ","))
 		if err != nil {
 			LogError("Invalid --columns parameter: %s", err.Error())
 			return
@@ -195,7 +195,7 @@ func getRangeValues(c *cli.Context) {
 	var colsIDs []int
 	if c.IsSet("columns") {
 		var err error
-		colsIDs, err = parseColumnsList(f, c.String("columns"))
+		colsIDs, err = f.ParseColumnsNames(strings.Split(c.String("columns"), ","))
 		if err != nil {
 			LogError("Invalid --columns parameter: %s", err.Error())
 			return
@@ -415,7 +415,7 @@ func modifyChangeColumn(c *cli.Context) {
 	}
 
 	var colIdx int
-	colIdx, err = parseColumnSel(f, colS)
+	colIdx, err = f.ParseColumnName(colS)
 	if err != nil {
 		LogError("Invalid column (--column): %s", err.Error())
 		return
@@ -492,7 +492,7 @@ func modifyDelColumns(c *cli.Context) {
 		close(r)
 		return
 	}
-	columns, err := parseColumnsList(r, cols)
+	columns, err := r.ParseColumnsNames(strings.Split(cols, ","))
 	if err != nil {
 		LogError("Columns definition error: " + err.Error())
 	}
@@ -719,17 +719,6 @@ func parseStrIntList(inp string) (res []int, err error) {
 	return
 }
 
-func parseColumnsList(r *RRD, inp string) (res []int, err error) {
-	for _, v := range strings.Split(inp, ",") {
-		idx, e := parseColumnSel(r, v)
-		if e != nil {
-			return nil, e
-		}
-		res = append(res, idx)
-	}
-	return
-}
-
 func parseArchiveDef(inp string) (archives []RRDArchive, err error) {
 	for idx, v := range strings.Split(inp, ",") {
 		adef := strings.Split(v, ":")
@@ -810,19 +799,6 @@ func parseColumnsDef(inp string) (columns []RRDColumn, err error) {
 		columns = append(columns, c)
 	}
 	return
-}
-
-func parseColumnSel(r *RRD, s string) (int, error) {
-	if idx, err := strconv.Atoi(s); err == nil && idx >= 0 {
-		return idx, nil
-	}
-
-	idx, ok := r.GetColumnIdx(s)
-	if !ok {
-		return 0, fmt.Errorf("Unknown column %v", s)
-	}
-
-	return idx, nil
 }
 
 func printRRDInfo(f *RRD) {

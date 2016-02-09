@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -129,7 +129,7 @@ func (s *Server) queryHandler(w http.ResponseWriter, r *http.Request) {
 	var columns []int
 
 	if len(req.Columns) > 0 {
-		cols, err := parseStrIntList(req.Columns)
+		cols, err := s.db.ParseColumnsNames(strings.Split(req.Columns, ","))
 		if err != nil {
 			http.Error(w, fmt.Sprintf("wrong columns: %s\n", err.Error()), http.StatusBadRequest)
 			return
@@ -202,7 +202,7 @@ func (s *Server) putHandler(w http.ResponseWriter, r *http.Request) {
 			Valid:  true,
 		}
 		if v.Column != "" {
-			c, err := strconv.Atoi(v.Column)
+			c, err := s.db.ParseColumnName(v.Column)
 			if err != nil {
 				http.Error(w, "column in value "+string(idx), http.StatusBadRequest)
 				return

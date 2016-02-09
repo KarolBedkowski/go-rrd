@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -176,6 +177,33 @@ func (r *RRD) GetColumnIdx(name string) (index int, ok bool) {
 		}
 	}
 	return
+}
+
+// ParseColumnsNames replace list of strings to list of ids of columns
+func (r *RRD) ParseColumnsNames(names []string) (ids []int, err error) {
+	ids = make([]int, 0, len(names))
+	var idx int
+	for _, c := range names {
+		if idx, err = r.ParseColumnName(c); err != nil {
+			return nil, err
+		}
+		ids = append(ids, idx)
+	}
+	return
+}
+
+// ParseColumnName find column id for name
+func (r *RRD) ParseColumnName(name string) (colIDX int, err error) {
+	if idx, err := strconv.Atoi(name); err == nil && idx >= 0 {
+		if idx >= len(r.columns) {
+			return 0, fmt.Errorf("Column %v not found", name)
+		}
+		return idx, nil
+	}
+	if idx, ok := r.GetColumnIdx(name); ok {
+		return idx, nil
+	}
+	return 0, fmt.Errorf("Unknown column %v", name)
 }
 
 // SetColumn definition
