@@ -122,10 +122,6 @@ func getValue(c *cli.Context) {
 	if !c.IsSet("ts") || ts == "" {
 		LogError("Missing timestamp (--ts)")
 	}
-	timestamp, ok := dateToTs(ts)
-	if !ok {
-		LogError("Parse ts error")
-	}
 
 	ExitWhenErrors()
 
@@ -133,6 +129,22 @@ func getValue(c *cli.Context) {
 	defer close(f)
 	if err != nil {
 		LogFatal("Open db error: %s", err.Error())
+	}
+
+	var timestamp int64
+	if strings.ToLower(ts) == "last" {
+		var err error
+		if timestamp, err = f.Last(); err != nil {
+			LogError("Getting last TS error: %s", err.Error())
+			return
+		}
+
+	} else {
+		var ok bool
+		if timestamp, ok = dateToTs(ts); !ok {
+			LogError("Parse ts error")
+			return
+		}
 	}
 
 	var colsIDs []int
@@ -147,7 +159,8 @@ func getValue(c *cli.Context) {
 
 	separator := c.GlobalString("separator")
 
-	if values, err := f.Get(timestamp, colsIDs...); err == nil {
+	if values, err := f.Get(timestamp, colsIDs...); err == nil && len(values) > 0 {
+		fmt.Print(values[0].TS, separator)
 		for _, val := range values {
 			if val.Valid {
 				fmt.Print(val.Value, separator)

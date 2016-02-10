@@ -90,7 +90,7 @@ func main() {
 				cli.StringFlag{
 					Name:  "ts",
 					Value: "",
-					Usage: "time stamp (in sec, date, N/now/NOW)",
+					Usage: "time stamp (in sec, date, N/now/NOW, last)",
 				},
 				cli.StringFlag{
 					Name:  "columns, c",
