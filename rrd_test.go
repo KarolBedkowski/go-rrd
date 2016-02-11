@@ -841,6 +841,55 @@ func TestRangeIncludeInvalid(t *testing.T) {
 	}
 }
 
+func TestColumnNames(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+
+	if c, err := r.ParseColumnName("1"); c != 1 || err != nil {
+		t.Errorf("invalid column name for 1: %v, %v", c, err)
+	}
+	if c, err := r.ParseColumnName("col3"); c != 2 || err != nil {
+		t.Errorf("invalid column name for col3: %v, %v", c, err)
+	}
+
+	if c, err := r.ParseColumnName("100"); err == nil {
+		t.Errorf("found invalid column name for 100, expect error: %v", c)
+	}
+	if c, err := r.ParseColumnName("cccc"); err == nil {
+		t.Errorf("found invalid column name for ccc, expect error: %v", c)
+	}
+
+	if cls, err := r.ParseColumnsNames([]string{"1", "col3"}); err != nil {
+		t.Errorf("parse columns names error: %s", err.Error())
+	} else if len(cls) != 2 || cls[0] != 1 || cls[1] != 2 {
+		t.Errorf("parse columns names invalid result: %v", cls)
+	}
+}
+
+func TestArchiveNames(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+
+	if a, err := r.ParseArchiveName("1"); a != 1 || err != nil {
+		t.Errorf("invalid column name for 1: %v, %v", a, err)
+	}
+	if a, err := r.ParseArchiveName("a2"); a != 2 || err != nil {
+		t.Errorf("invalid column name for a2: %v, %v", a, err)
+	}
+
+	if a, err := r.ParseArchiveName("100"); err == nil {
+		t.Errorf("found invalid archive name for 100, expect error: %v", a)
+	}
+	if a, err := r.ParseArchiveName("cccc"); err == nil {
+		t.Errorf("found invalid archive name for ccc, expect error: %v", a)
+	}
+	if a, err := r.ParseArchiveNames([]string{"1", "a2"}); err != nil {
+		t.Errorf("parse archive names error: %s", err.Error())
+	} else if len(a) != 2 || a[0] != 1 || a[1] != 2 {
+		t.Errorf("parse archive names invalid result: %v", a)
+	}
+}
+
 func createTestDB(t *testing.T) (*RRD, []RRDColumn, []RRDArchive) {
 	c := []RRDColumn{
 		RRDColumn{Name: "col1", Function: FLast, Minimum: 0, Maximum: 1000000, HasMinimum: true, HasMaximum: true},
