@@ -915,6 +915,58 @@ func TestModAddColumn(t *testing.T) {
 		ainfo, _ := r2.Info()
 		t.Logf("info: %#v\n", ainfo)
 	}
+
+	if c := r2.GetColumn(6); c.Name != "cn1" {
+		t.Errorf("invalid column 6: %v", c)
+	}
+	if c := r2.GetColumn(7); c.Name != "cn2" {
+		t.Errorf("invalid column 7: %v", c)
+	}
+
+	// check data
+	for _, e := range testV {
+		vs, err := r2.Get(int64(e), 0)
+		if err != nil {
+			t.Errorf("Get value %d error %s", e, err.Error())
+			return
+		}
+		v := vs[0]
+		for _, err := range checkValue(v, float32(e), int64(e), true, -1, 0) {
+			t.Error(err)
+			t.Logf("dump: %s", r.LowLevelDebugDump())
+		}
+	}
+}
+
+func TestModDelColumn(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	// sample data
+	testV := []int{1, 2, 3, 4, 5}
+	if errors := putTestDataInts(r, testV, 0); len(errors) > 0 {
+		t.Errorf("Put data error: %v", errors)
+		return
+	}
+	closeTestDb(t, r)
+	cols2Del := []int{2, 3}
+	if err := ModifyDelColumns("tmp.rdb", cols2Del); err != nil {
+		t.Errorf("ModifyDelColumns error: %s", err.Error())
+		return
+	}
+
+	r2, _ := OpenRRD("tmp.rdb", true)
+	defer r2.Close()
+	if len(r2.columns) != 4 {
+		t.Errorf("Invalid columns count: %d", len(r2.columns))
+		ainfo, _ := r2.Info()
+		t.Logf("info: %#v\n", ainfo)
+	}
+
+	cols := []string{"col1", "col2", "col5", "col6"}
+	for idx, name := range cols {
+		if c := r2.GetColumn(idx); c.Name != name {
+			t.Errorf("invalid column %d: %v", idx, c)
+		}
+	}
 	// check data
 	for _, e := range testV {
 		vs, err := r2.Get(int64(e), 0)
