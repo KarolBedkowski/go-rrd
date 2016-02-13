@@ -226,6 +226,22 @@ func (b *BinaryFileStorage) Open(filename string, readonly bool) ([]RRDColumn, [
 		return nil, nil, err
 	}
 
+	// check file size
+	calculatedSize := int64(rrdHeaderSize)
+	if b.header.Version == 1 {
+		calculatedSize += int64(rrdColumnSize * b.header.ColumnsCount)
+	} else {
+		calculatedSize += int64(rrdColumnSizeV2 * b.header.ColumnsCount)
+	}
+	calculatedSize += int64(rrdArchiveSize * b.header.ArchivesCount)
+	for _, a := range b.archives {
+		calculatedSize += a.archiveSize
+	}
+
+	if fs, _ := f.Stat(); fs.Size() != calculatedSize {
+		return nil, nil, fmt.Errorf("invalid file size - expected %d, is %d", calculatedSize, fs.Size())
+	}
+
 	LogDebug("BFS.Open opening finished")
 	return bfColumnToRRDColumn(b.columns), bfArchiveToRRDArchive(b.archives), err
 }
