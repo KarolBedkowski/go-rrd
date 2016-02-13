@@ -890,6 +890,46 @@ func TestArchiveNames(t *testing.T) {
 	}
 }
 
+func TestModAddColumn(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	// sample data
+	testV := []int{1, 2, 3, 4, 5}
+	if errors := putTestDataInts(r, testV, 0); len(errors) > 0 {
+		t.Errorf("Put data error: %v", errors)
+		return
+	}
+	closeTestDb(t, r)
+	newCols := []RRDColumn{
+		RRDColumn{Name: "cn1", Function: FLast},
+		RRDColumn{Name: "cn2", Function: FAverage},
+	}
+	if err := ModifyAddColumns("tmp.rdb", newCols); err != nil {
+		t.Errorf("ModifyAddColumns error: %s", err.Error())
+		return
+	}
+
+	r2, _ := OpenRRD("tmp.rdb", true)
+	defer r2.Close()
+	if len(r2.columns) != 8 {
+		t.Errorf("Invalid columns count: %d", len(r2.columns))
+		ainfo, _ := r2.Info()
+		t.Logf("info: %#v\n", ainfo)
+	}
+	// check data
+	for _, e := range testV {
+		vs, err := r2.Get(int64(e), 0)
+		if err != nil {
+			t.Errorf("Get value %d error %s", e, err.Error())
+			return
+		}
+		v := vs[0]
+		for _, err := range checkValue(v, float32(e), int64(e), true, -1, 0) {
+			t.Error(err)
+			t.Logf("dump: %s", r.LowLevelDebugDump())
+		}
+	}
+}
+
 func createTestDB(t *testing.T) (*RRD, []RRDColumn, []RRDArchive) {
 	c := []RRDColumn{
 		RRDColumn{Name: "col1", Function: FLast, Minimum: 0, Maximum: 1000000, HasMinimum: true, HasMaximum: true},
