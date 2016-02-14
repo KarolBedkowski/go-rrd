@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -982,6 +984,74 @@ func TestModDelColumn(t *testing.T) {
 	}
 }
 
+func TestSaveAs(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+	// sample data
+	testV := []int{1, 5, 10, 20, 100, 150, 200, 250, 300, 400, 450, 490, 495, 500}
+	if errors := putTestDataInts(r, testV, 0); len(errors) > 0 {
+		t.Errorf("Put data error: %v", errors)
+		return
+	}
+	if err := r.SaveAs("tmp2.rdb"); err != nil {
+		t.Errorf("SaveAs error: %s", err.Error())
+		return
+	}
+
+	r.Close()
+	r = nil
+
+	r1, err := ioutil.ReadFile("tmp.rdb")
+	if err != nil {
+		t.Errorf("Read file 1 error: %s", err.Error())
+	}
+	r2, err := ioutil.ReadFile("tmp2.rdb")
+	if err != nil {
+		t.Errorf("Read file 2 error: %s", err.Error())
+	}
+	if !bytes.Equal(r1, r2) {
+		t.Errorf("different files")
+	}
+}
+
+func TestDumpLoad(t *testing.T) {
+	r, _, _ := createTestDB(t)
+	defer closeTestDb(t, r)
+	// sample data
+	testV := []int{1, 5, 10, 20, 100, 150, 200, 250, 300, 400, 450, 490, 495, 500}
+	if errors := putTestDataInts(r, testV, 0); len(errors) > 0 {
+		t.Errorf("Put data error: %v", errors)
+		return
+	}
+	if err := r.Dump("tmp2.dump"); err != nil {
+		t.Errorf("Dump error: %s", err.Error())
+		return
+	}
+
+	r.Close()
+	r = nil
+
+	r, err := LoadDumpRRD("tmp2.dump", "tmp2.rdb")
+	closeTestDb(t, r)
+	if err != nil {
+		t.Errorf("LoadDumpRRD error: %s", err.Error())
+		return
+	}
+
+	r1, err := ioutil.ReadFile("tmp.rdb")
+	if err != nil {
+		t.Errorf("Read file 1 error: %s", err.Error())
+	}
+	r2, err := ioutil.ReadFile("tmp2.rdb")
+	if err != nil {
+		t.Errorf("Read file 2 error: %s", err.Error())
+	}
+	if !bytes.Equal(r1, r2) {
+		t.Errorf("different files")
+	}
+
+}
+
 func createTestDB(t *testing.T) (*RRD, []RRDColumn, []RRDArchive) {
 	c := []RRDColumn{
 		RRDColumn{Name: "col1", Function: FLast, Minimum: 0, Maximum: 1000000, HasMinimum: true, HasMaximum: true},
@@ -1009,6 +1079,9 @@ func createTestDB(t *testing.T) (*RRD, []RRDColumn, []RRDArchive) {
 }
 
 func closeTestDb(t *testing.T, r *RRD) {
+	if r == nil {
+		return
+	}
 	err := r.Close()
 	if err != nil {
 		t.Errorf("RRD close error: %s", err.Error())
