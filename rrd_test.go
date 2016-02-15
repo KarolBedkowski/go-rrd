@@ -988,9 +988,9 @@ func TestSaveAs(t *testing.T) {
 	r, _, _ := createTestDB(t)
 	defer closeTestDb(t, r)
 	// sample data
-	testV := []int{1, 5, 10, 20, 100, 150, 200, 250, 300, 400, 450, 490, 495, 500}
-	if errors := putTestDataInts(r, testV, 0); len(errors) > 0 {
-		t.Errorf("Put data error: %v", errors)
+	//testV := []int{1, 5, 10, 20, 100, 150, 200, 250, 300, 400, 450, 490, 495, 500}
+	if err := putTestData(r, 1000, 0, 1, 2, 3, 4, 5); err != nil {
+		t.Errorf("Put data error: %v", err)
 		return
 	}
 	if err := r.SaveAs("tmp2.rdb"); err != nil {
@@ -1018,9 +1018,8 @@ func TestDumpLoad(t *testing.T) {
 	r, _, _ := createTestDB(t)
 	defer closeTestDb(t, r)
 	// sample data
-	testV := []int{1, 5, 10, 20, 100, 150, 200, 250, 300, 400, 450, 490, 495, 500}
-	if errors := putTestDataInts(r, testV, 0); len(errors) > 0 {
-		t.Errorf("Put data error: %v", errors)
+	if err := putTestData(r, 1000, 0, 1, 2, 3, 4, 5); err != nil {
+		t.Errorf("Put data error: %v", err)
 		return
 	}
 	if err := r.Dump("tmp2.dump"); err != nil {
@@ -1122,4 +1121,14 @@ func putTestDataInts(r *RRD, values []int, cols ...int) (errors []string) {
 		}
 	}
 	return
+}
+func putTestData(r *RRD, number int, cols ...int) error {
+	for i := 0; i < number; i++ {
+		for _, col := range cols {
+			if err := r.Put(int64(i), col, float32(i+col+1)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
