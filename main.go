@@ -128,6 +128,10 @@ func main() {
 					Value: "",
 					Usage: "optional columns to retrieve",
 				},
+				cli.IntFlag{
+					Name:  "average-result",
+					Usage: "average output in time interval (sec)",
+				},
 			},
 			Action: getRangeValues,
 		},
