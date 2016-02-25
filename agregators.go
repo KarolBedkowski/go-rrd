@@ -24,6 +24,19 @@ func AverageByTime(in Rows, step int64) (out Rows) {
 	return
 }
 
+// AverageToNumber average values to get no more than given points
+func AverageToNumber(in Rows, maxRows int) (out Rows) {
+	if len(in) < 2 || len(in) < maxRows {
+		return in
+	}
+
+	minTS := in[0].TS
+	maxTS := in[len(in)-1].TS
+	step := (maxTS - minTS) / int64(maxRows)
+
+	return AverageByTime(in, step)
+}
+
 func averageRows(in Rows) (out Row) {
 	// count only valid values
 	out.TS = in[0].TS

@@ -240,6 +240,14 @@ func getRangeValues(c *cli.Context) {
 		if c.IsSet("average-result") {
 			if step := c.Int("average-result"); step > 1 {
 				rows = AverageByTime(rows, int64(step))
+			} else {
+				LogError("Invalid --average-result: %s; ignoring", step)
+			}
+		} else if c.IsSet("average-max-count") {
+			if cnt := c.Int("average-max-count"); cnt > 1 {
+				rows = AverageToNumber(rows, cnt)
+			} else {
+				LogError("Invalid --average-max-count: %s; ignoring", cnt)
 			}
 		}
 		prevValid := true

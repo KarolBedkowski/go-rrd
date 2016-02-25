@@ -132,6 +132,10 @@ func main() {
 					Name:  "average-result",
 					Usage: "average output in time interval (sec)",
 				},
+				cli.IntFlag{
+					Name:  "average-max-count",
+					Usage: "average output to get no more than given results",
+				},
 			},
 			Action: getRangeValues,
 		},
