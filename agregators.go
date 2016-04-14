@@ -60,3 +60,19 @@ func averageRows(in Rows) (out Row) {
 	}
 	return
 }
+
+//RemoveInvalidVals set values that not match min-max range as invalid
+func RemoveInvalidVals(rows Rows, cols []RRDColumn) (out Rows) {
+	for _, row := range rows {
+		outRow := Row{TS: row.TS}
+		for cid, col := range cols {
+			val := row.Values[cid]
+			val.Valid = (val.Valid &&
+				(!col.HasMinimum || val.Value > col.Minimum) &&
+				(!col.HasMaximum || val.Value < col.Maximum))
+			outRow.Values = append(outRow.Values, val)
+		}
+		out = append(out, outRow)
+	}
+	return
+}

@@ -237,6 +237,10 @@ func getRangeValues(c *cli.Context) {
 	separate := c.Bool("separate-valid-groups")
 
 	if rows, err := f.GetRange(tsMin, tsMax, colsIDs, includeInvalid, !noRealTime); err == nil {
+		if c.IsSet("fix-ranges") {
+			// mark values not matching min-max range
+			rows = RemoveInvalidVals(rows, f.Columns())
+		}
 		if c.IsSet("average-result") {
 			if step := c.Int("average-result"); step > 1 {
 				rows = AverageByTime(rows, int64(step))

@@ -136,6 +136,10 @@ func main() {
 					Name:  "average-max-count",
 					Usage: "average output to get no more than given results",
 				},
+				cli.BoolFlag{
+					Name:  "fix-ranges",
+					Usage: "invalidate values that don't match min-max range",
+				},
 			},
 			Action: getRangeValues,
 		},

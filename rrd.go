@@ -169,6 +169,10 @@ func (r *RRD) GetColumn(idx int) RRDColumn {
 	return r.columns[idx]
 }
 
+func (r *RRD) Columns() []RRDColumn {
+	return r.columns
+}
+
 // GetColumnIdx search for column by name and return it index
 func (r *RRD) GetColumnIdx(name string) (index int, ok bool) {
 	for idx, v := range r.columns {
