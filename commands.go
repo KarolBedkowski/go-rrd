@@ -883,3 +883,103 @@ func close(r *RRD) {
 		LogError("Closing db error: %s", err.Error())
 	}
 }
+
+func plotRangeValues(c *cli.Context) {
+	if !processGlobalArgs(c) {
+		return
+	}
+	filename, _ := getFilenameParam(c)
+	tsMin := int64(0)
+	tsMinStr := c.String("begin")
+	if c.IsSet("begin") && tsMinStr != "" {
+		var ok bool
+		tsMin, ok = dateToTs(tsMinStr)
+		if !ok {
+			LogError("Parsing begin date error")
+		}
+	}
+
+	tsMaxStr := c.String("end")
+	if !c.IsSet("end") || tsMaxStr == "" {
+		tsMaxStr = "now"
+	}
+	tsMax, ok := dateToTs(tsMaxStr)
+	if !ok {
+		LogError("Parsing end date error")
+	}
+
+	f, err := OpenRRD(filename, true)
+	defer close(f)
+	if err != nil {
+		LogFatal("Open db error: %s", err.Error())
+	}
+
+	var colsIDs []int
+	if c.IsSet("columns") {
+		var err error
+		colsIDs, err = f.ParseColumnsNames(strings.Split(c.String("columns"), ","))
+		if err != nil {
+			LogError("Invalid --columns parameter: %s", err.Error())
+			return
+		}
+		if len(colsIDs) > 2 || len(colsIDs) == 0 {
+			LogError("Wrong number of columns; 1 or 2 columns are requred")
+		}
+	} else {
+		LogError("Missing columns; 1 or 2 columns are requred")
+	}
+
+	p := &Plot{}
+
+	p.Width = c.Int("width")
+	if p.Width < 1 {
+		LogError("Invalid chart width")
+	}
+	p.Height = c.Int("height")
+	if p.Height < 1 {
+		LogError("Invalid chart height")
+	}
+
+	ExitWhenErrors()
+
+	p.UseSecoundAxis = c.Bool("second-axies")
+
+	outFilename := c.String("output")
+	if outFilename == "" {
+		Log("Output filename not given - using 'chart.png'")
+		outFilename = "chart.png"
+	}
+	includeInvalid := c.Bool("include-invalid")
+	noRealTime := c.GlobalBool("no-rt")
+
+	if rows, err := f.GetRange(tsMin, tsMax, colsIDs, includeInvalid, !noRealTime); err == nil {
+		if c.IsSet("fix-ranges") {
+			// mark values not matching min-max range
+			rows = RemoveInvalidVals(rows, f.Columns())
+		}
+		if c.IsSet("average-result") {
+			if step := c.Int("average-result"); step > 1 {
+				rows = AverageByTime(rows, int64(step))
+			} else {
+				LogError("Invalid --average-result: %s; ignoring", step)
+			}
+		} else if c.IsSet("average-max-count") {
+			if cnt := c.Int("average-max-count"); cnt > 1 {
+				rows = AverageToNumber(rows, cnt)
+			} else {
+				LogError("Invalid --average-max-count: %s; ignoring", cnt)
+			}
+		}
+		if len(rows) < 2 {
+			LogFatal("Not enough points to plot")
+			return
+		}
+		p.Rows = rows
+		for _, col := range colsIDs {
+			p.Cols = append(p.Cols, f.GetColumn(col).Name)
+		}
+		p.plotChart(outFilename)
+	} else {
+		LogFatal("Error: %s", err.Error())
+	}
+}

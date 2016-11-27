@@ -314,6 +314,64 @@ func main() {
 			Usage:  "update rrd to never version",
 			Action: updateRRDfile,
 		},
+		{
+			Name:    "plot-chart",
+			Aliases: []string{"pc"},
+			Usage:   "plot chart from data in database",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "begin, b",
+					Value: "",
+					Usage: "time stamp (in sec, date, N/now/NOW)",
+				},
+				cli.StringFlag{
+					Name:  "end, e",
+					Value: "now",
+					Usage: "time stamp (in sec, date, N/now/NOW)",
+				},
+				cli.BoolFlag{
+					Name:  "include-invalid",
+					Usage: "include records with no data",
+				},
+				cli.StringFlag{
+					Name:  "output",
+					Usage: "output PNG filename",
+					Value: "chart.png",
+				},
+				cli.StringFlag{
+					Name:  "columns, c",
+					Value: "",
+					Usage: "optional columns to retrieve",
+				},
+				cli.IntFlag{
+					Name:  "average-result",
+					Usage: "average output in time interval (sec)",
+				},
+				cli.IntFlag{
+					Name:  "average-max-count",
+					Usage: "average output to get no more than given results",
+				},
+				cli.BoolFlag{
+					Name:  "fix-ranges",
+					Usage: "invalidate values that don't match min-max range",
+				},
+				cli.IntFlag{
+					Name:  "width",
+					Usage: "chart width",
+					Value: 1024,
+				},
+				cli.IntFlag{
+					Name:  "height",
+					Usage: "chart height",
+					Value: 400,
+				},
+				cli.BoolFlag{
+					Name:  "second-axies",
+					Usage: "Use separated axis for second column.",
+				},
+			},
+			Action: plotRangeValues,
+		},
 	}
 	app.Run(os.Args)
 }
