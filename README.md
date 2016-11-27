@@ -1,13 +1,14 @@
 go-rrd
 ======
 
-Simple round-robin database.
+Simple round-robin database with basic chart plotting functions.
 
 
 ## Dependency
 
 * github.com/camlistore/lock
 * github.com/codegangsta/cli
+* github.com/wcharczuk/go-chart
 
 
 ## License
