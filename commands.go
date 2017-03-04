@@ -853,7 +853,8 @@ func printRRDInfo(f *RRD) {
 		fmt.Printf("Archives: %d\n", info.ArchivesCount)
 		for idx, a := range info.Archives {
 			fmt.Printf(" %2d. %-16s\n", idx, a.Name)
-			fmt.Printf("     Rows: %5d   Step: %d\n", a.Rows, a.Step)
+			tstep := time.Duration(a.Step) * time.Second
+			fmt.Printf("     Rows: %5d   Step: %d  (%s)\n", a.Rows, a.Step, tstep.String())
 			fmt.Printf("     TS range: %d - %d (%s - %s)\n", a.MinTS, a.MaxTS,
 				time.Unix(a.MinTS, 0).String(), time.Unix(a.MaxTS, 0).String())
 			fmt.Printf("     Used rows: %d (%0.1f%%)\n", a.UsedRows,
