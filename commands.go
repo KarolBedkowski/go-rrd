@@ -70,6 +70,9 @@ func putValues(c *cli.Context) {
 	var values []Value
 
 	for idx, a := range c.Args() {
+		if a == "null" || a == "nul" || a == "nil" {
+			continue
+		}
 		v, err := strconv.ParseFloat(a, 32)
 		if err != nil {
 			LogError("Invalid value '%s' on index %d", a, idx+1)
@@ -80,6 +83,10 @@ func putValues(c *cli.Context) {
 			Valid:  true,
 			Column: idx,
 		})
+	}
+
+	if len(values) == 0 {
+		LogError("Missing values to put (all null)")
 	}
 
 	ExitWhenErrors()
