@@ -11,7 +11,7 @@ var AppVersion = "dev"
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "boom"
+	app.Name = "go-rrd"
 	app.Usage = "RRD CLI tool"
 	app.Version = "0.0.1 (build:" + AppVersion + ")"
 	app.Flags = []cli.Flag{
